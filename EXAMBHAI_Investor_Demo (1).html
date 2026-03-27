@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EXAMBHAI — India's Most Intelligent Exam Prep Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root{
+  --brand:#1a3a5c;--brand2:#0f2438;--accent:#f59e0b;--accent2:#fbbf24;
+  --green:#059669;--red:#dc2626;--blue:#2563eb;--purple:#7c3aed;
+  --orange:#ea580c;--teal:#0891b2;--pink:#db2777;--indigo:#4338ca;
+  --bg:#f0f4f8;--card:#fff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;
+  --r:13px;--sh:0 1px 3px rgba(0,0,0,.07),0 4px 14px rgba(0,0,0,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow-x:hidden;}
+.hidden{display:none!important;} .flex{display:flex;} .gap8{gap:8px;} .gap12{gap:12px;}
+
+/* ONBOARDING */
+#ob{min-height:100vh;background:linear-gradient(145deg,#071525 0%,#0f2438 50%,#162b42 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;padding:20px;}
+.ob-logo{text-align:center;margin-bottom:28px;}
+.ob-logo h1{font-size:44px;font-weight:900;color:#fff;letter-spacing:-1px;}
+.ob-logo h1 span{color:var(--accent);}
+.ob-logo p{color:rgba(255,255,255,.45);font-size:13px;margin-top:4px;}
+.ob-box{background:rgba(255,255,255,.06);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:28px;max-width:480px;width:100%;}
+.ob-step{display:none;}.ob-step.on{display:block;}
+.ob-prog{display:flex;align-items:center;gap:8px;margin-bottom:20px;}
+.ob-prog-bar{flex:1;height:4px;background:rgba(255,255,255,.1);border-radius:2px;}
+.ob-prog-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .4s;}
+.ob-pg-txt{font-size:11px;color:rgba(255,255,255,.35);}
+.ob-h{font-size:19px;font-weight:800;color:#fff;margin-bottom:4px;}
+.ob-s{font-size:13px;color:rgba(255,255,255,.45);margin-bottom:18px;}
+.ob-in{width:100%;padding:10px 13px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:10px;color:#fff;font-size:13px;font-family:'Nunito',sans-serif;margin-bottom:9px;outline:none;}
+.ob-in:focus{border-color:var(--accent);}
+.ob-in::placeholder{color:rgba(255,255,255,.3);}
+select.ob-in option{background:#0f2438;}
+.ob-btn{width:100%;padding:12px;background:var(--accent);color:#1a1a1a;border:none;border-radius:11px;font-size:14px;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;transition:all .2s;margin-top:4px;}
+.ob-btn:hover{background:var(--accent2);transform:translateY(-1px);}
+.eg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.eo{padding:12px 8px;border:1.5px solid rgba(255,255,255,.12);border-radius:10px;cursor:pointer;text-align:center;transition:all .2s;color:#fff;}
+.eo:hover,.eo.sel{border-color:var(--accent);background:rgba(245,158,11,.1);}
+.eo .ei{font-size:20px;margin-bottom:3px;}
+.eo .en{font-size:12px;font-weight:700;}
+.eo .es{font-size:10px;color:rgba(255,255,255,.4);}
+.tgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.ob-lbl{font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px;}
+.topic-sec{margin-bottom:12px;}
+.topic-sec-hd{font-size:12px;font-weight:800;color:var(--accent);margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;}
+.topic-g{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.ti{display:flex;align-items:center;gap:6px;padding:6px 9px;background:rgba(255,255,255,.04);border-radius:8px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.7);}
+.ti input{accent-color:var(--accent);cursor:pointer;width:13px;height:13px;}
+.ti.ck{background:rgba(245,158,11,.08);color:#fff;}
+.t-scroll{max-height:260px;overflow-y:auto;padding-right:3px;}
+.t-scroll::-webkit-scrollbar{width:3px;}
+.t-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px;}
+.sa-btn{font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;font-family:'Nunito',sans-serif;}
+
+/* APP */
+#app{display:none;min-height:100vh;}
+#app.on{display:flex;}
+.sb{width:230px;background:var(--brand2);color:#fff;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:100;display:flex;flex-direction:column;}
+.sb::-webkit-scrollbar{width:0;}
+.sb-hd{padding:16px 14px 12px;border-bottom:1px solid rgba(255,255,255,.06);}
+.sb-logo{font-size:20px;font-weight:900;color:#fff;letter-spacing:-.5px;}
+.sb-logo span{color:var(--accent);}
+.sb-user{display:flex;align-items:center;gap:8px;margin-top:10px;}
+.sb-av{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--orange));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;}
+.sb-nm{font-size:12px;font-weight:700;line-height:1.3;}
+.sb-ex{font-size:10px;color:rgba(255,255,255,.38);}
+.sb-sc{margin:8px 12px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.18);border-radius:9px;padding:9px 11px;}
+.sb-sc-lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);margin-bottom:2px;}
+.sb-sc-val{font-size:26px;font-weight:900;color:#fff;line-height:1;}
+.sb-sc-sub{font-size:9px;color:rgba(255,255,255,.3);margin-top:2px;}
+.sb-sc-bar{height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:6px;}
+.sb-sc-fill{height:100%;border-radius:2px;background:linear-gradient(to right,var(--accent),var(--orange));}
+.nav-g{padding:6px 0;}
+.nav-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.2);padding:7px 14px 3px;}
+.ni{display:flex;align-items:center;gap:8px;padding:8px 13px;cursor:pointer;transition:all .15s;border-left:3px solid transparent;font-size:12.5px;color:rgba(255,255,255,.55);font-weight:600;}
+.ni:hover{background:rgba(255,255,255,.04);color:#fff;}
+.ni.on{background:rgba(245,158,11,.09);border-left-color:var(--accent);color:#fff;font-weight:700;}
+.ni .ic{font-size:15px;width:19px;text-align:center;}
+.sb-ft{margin-top:auto;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);}
+.sb-days{font-size:10px;color:rgba(255,255,255,.3);text-align:center;margin-bottom:6px;}
+.sb-days b{color:var(--accent);font-size:15px;}
+.logout{width:100%;background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.35);padding:7px;border-radius:7px;cursor:pointer;font-size:11px;font-family:'Nunito',sans-serif;}
+.logout:hover{color:var(--red);border-color:rgba(220,38,38,.4);}
+.main{margin-left:230px;flex:1;display:flex;flex-direction:column;}
+.tb{background:#fff;border-bottom:1px solid var(--border);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
+.tb-title{font-size:16px;font-weight:800;}
+.tb-r{display:flex;align-items:center;gap:9px;}
+.streak{background:#fff7ed;border:1px solid #fed7aa;border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;color:#c2410c;display:flex;align-items:center;gap:4px;}
+.bell-w{position:relative;cursor:pointer;}
+.bell{width:34px;height:34px;border-radius:50%;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;}
+.bell-n{position:absolute;top:-3px;right:-3px;background:var(--red);color:#fff;font-size:8px;font-weight:800;min-width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0 2px;}
+.hl-btn{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;}
+.cont{padding:18px;flex:1;}
+.sec{display:none;}.sec.on{display:block;}
+
+/* CARDS */
+.sr{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:11px;margin-bottom:16px;}
+.sc{background:var(--card);border-radius:var(--r);padding:14px;border:1px solid var(--border);box-shadow:var(--sh);}
+.sc-i{font-size:22px;margin-bottom:5px;}
+.sc-v{font-size:24px;font-weight:900;line-height:1;}
+.sc-l{font-size:11px;color:var(--muted);margin-top:2px;}
+.sc-c{font-size:10px;font-weight:700;margin-top:4px;}
+.sc-c.up{color:var(--green);}.sc-c.dn{color:var(--red);}
+.card{background:var(--card);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden;}
+.ch{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.ch h3{font-size:13px;font-weight:800;}
+.cb{padding:16px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px;}
+
+/* BADGES */
+.bdg{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;}
+.g{background:#d1fae5;color:#065f46;}.r{background:#fee2e2;color:#991b1b;}
+.o{background:#fef3c7;color:#92400e;}.b{background:#dbeafe;color:#1e40af;}
+.p{background:#ede9fe;color:#5b21b6;}.gr{background:#f1f5f9;color:#475569;}
+.t{background:#cffafe;color:#155e75;}.pk{background:#fce7f3;color:#9d174d;}
+.yl{background:#fefce8;color:#713f12;}
+
+/* PROGRESS */
+.pb{background:#e2e8f0;border-radius:20px;overflow:hidden;}
+.pf{border-radius:20px;transition:width .5s;}
+.h6{height:6px;}.h8{height:8px;}.h10{height:10px;}.h12{height:12px;}
+.g-f{background:var(--green);}.r-f{background:var(--red);}.o-f{background:var(--orange);}
+.b-f{background:var(--blue);}.a-f{background:var(--accent);}.p-f{background:var(--purple);}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:9px;font-size:12px;font-weight:700;border:none;cursor:pointer;transition:all .15s;font-family:'Nunito',sans-serif;}
+.btn-br{background:var(--brand);color:#fff;}.btn-br:hover{opacity:.9;}
+.btn-ac{background:var(--accent);color:#1a1a1a;}.btn-ac:hover{background:var(--accent2);}
+.btn-gn{background:var(--green);color:#fff;}
+.btn-rd{background:var(--red);color:#fff;}
+.btn-gh{background:transparent;border:1px solid var(--border);color:var(--text);}.btn-gh:hover{background:var(--bg);}
+.btn-sm{padding:4px 9px;font-size:11px;border-radius:7px;}
+.btn-xs{padding:3px 7px;font-size:10px;border-radius:6px;}
+.btn-pur{background:var(--purple);color:#fff;}
+
+/* TABLES */
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:#f8fafc;padding:8px 12px;text-align:left;font-weight:700;color:var(--muted);font-size:10px;letter-spacing:.5px;text-transform:uppercase;border-bottom:2px solid var(--border);}
+td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#fafbfc;}
+
+/* TABS */
+.tabs{display:flex;border-bottom:2px solid var(--border);margin-bottom:16px;overflow-x:auto;}
+.tab{padding:8px 14px;cursor:pointer;font-size:12px;color:var(--muted);border-bottom:2.5px solid transparent;white-space:nowrap;transition:all .15s;font-weight:600;margin-bottom:-2px;}
+.tab.on{color:var(--brand);border-bottom-color:var(--brand);font-weight:800;}
+.tc{display:none;}.tc.on{display:block;}
+
+/* MODAL */
+.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center;padding:16px;}
+.mo.on{display:flex;}
+.mo-box{background:#fff;border-radius:18px;padding:24px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;}
+.mo-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.mo-hd h3{font-size:15px;font-weight:800;}
+.mo-x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);}
+
+/* ALERTS */
+.alt{padding:10px 13px;border-radius:9px;font-size:12px;margin-bottom:11px;display:flex;gap:8px;align-items:start;}
+.a-w{background:#fffbeb;border:1px solid #fde68a;color:#92400e;}
+.a-i{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;}
+.a-s{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;}
+.a-e{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;}
+.a-p{background:#faf5ff;border:1px solid #e9d5ff;color:#6b21a8;}
+
+/* FORM */
+.fg{margin-bottom:12px;}
+.fg label{display:block;font-size:11px;font-weight:700;margin-bottom:4px;}
+.fc{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:'Nunito',sans-serif;outline:none;color:var(--text);}
+.fc:focus{border-color:var(--blue);}
+
+/* TASK CARD */
+.tc-wrap{background:#fff;border:1.5px solid var(--border);border-radius:11px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;transition:all .2s;}
+.tc-wrap.done{opacity:.5;border-color:var(--green);background:#ecfdf5;}
+.tc-wrap.skipped{opacity:.4;border-color:#cbd5e1;background:#f8fafc;}
+.tc-wrap.overdue{border-color:var(--red);background:#fef2f2;}
+.tc-wrap.in-progress{border-color:var(--blue);background:#eff6ff;}
+.tc-bar{width:4px;height:44px;border-radius:4px;flex-shrink:0;}
+.tc-time{font-size:10px;font-weight:700;color:var(--muted);min-width:50px;}
+.tc-body{flex:1;}
+.tc-sub{font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;}
+.tc-topic{font-size:13px;font-weight:700;margin-bottom:2px;}
+.tc-meta{font-size:10px;color:var(--muted);}
+.tc-acts{display:flex;gap:5px;flex-shrink:0;}
+
+/* WEEK STRIP */
+.ws{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px;}
+.day{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:8px 4px;text-align:center;cursor:pointer;transition:all .15s;}
+.day.today{border-color:var(--brand);background:#eff6ff;}
+.day.done-d{border-color:var(--green);background:#ecfdf5;}
+.day.part-d{border-color:var(--accent);background:#fffbeb;}
+.day-n{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;}
+.day-num{font-size:17px;font-weight:900;margin:2px 0;}
+.day-dot{width:6px;height:6px;border-radius:50%;margin:3px auto 0;}
+.mood-i{font-size:10px;margin-top:2px;}
+
+/* MOOD CARD */
+.mood-card{background:linear-gradient(135deg,#1e3a5f,#1a2e4a);color:#fff;border-radius:12px;padding:16px;margin-bottom:14px;}
+.mood-opts{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px;}
+.mood-opt{padding:7px 12px;border:1.5px solid rgba(255,255,255,.15);border-radius:20px;cursor:pointer;font-size:12px;color:rgba(255,255,255,.7);transition:all .15s;}
+.mood-opt:hover,.mood-opt.sel{border-color:var(--accent);background:rgba(245,158,11,.15);color:#fff;}
+
+/* QUIZ/TEST */
+.test-q{background:#fff;border:1.5px solid var(--border);border-radius:11px;padding:18px;margin-bottom:11px;}
+.q-meta{font-size:10px;color:var(--muted);margin-bottom:7px;display:flex;gap:7px;flex-wrap:wrap;}
+.q-text{font-size:14px;font-weight:700;line-height:1.5;margin-bottom:14px;}
+.opt{display:flex;align-items:center;gap:9px;padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;margin-bottom:6px;cursor:pointer;transition:all .15s;}
+.opt:hover{border-color:var(--blue);background:#eff6ff;}
+.opt.sel{border-color:var(--blue);background:#dbeafe;}
+.opt.ok{border-color:var(--green);background:#d1fae5;}
+.opt.ng{border-color:var(--red);background:#fee2e2;}
+.opt-l{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;}
+.opt.sel .opt-l{background:var(--blue);border-color:var(--blue);color:#fff;}
+.opt.ok .opt-l{background:var(--green);border-color:var(--green);color:#fff;}
+.opt.ng .opt-l{background:var(--red);border-color:var(--red);color:#fff;}
+.q-nums{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;}
+.qn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;cursor:pointer;}
+.qn.ans{background:var(--green);color:#fff;border-color:var(--green);}
+.qn.cur{background:var(--brand);color:#fff;border-color:var(--brand);}
+.qn.flag{background:#fef3c7;color:var(--orange);border-color:var(--accent);}
+.q-nav{display:flex;justify-content:space-between;align-items:center;margin-top:12px;}
+
+/* CHAT */
+.chat-w{display:flex;flex-direction:column;height:calc(100vh - 130px);max-width:760px;}
+.chat-hdr{background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;border-radius:var(--r) var(--r) 0 0;padding:13px 16px;display:flex;align-items:center;gap:9px;}
+.c-av{width:38px;height:38px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;}
+.chat-info h3{font-size:14px;font-weight:800;}
+.chat-info p{font-size:10px;opacity:.5;margin-top:1px;}
+.chat-msgs{flex:1;overflow-y:auto;padding:14px;background:#f8fafc;border:1px solid var(--border);border-top:none;display:flex;flex-direction:column;gap:10px;}
+.msg-r{display:flex;gap:7px;max-width:82%;}
+.msg-r.user{align-self:flex-end;flex-direction:row-reverse;}
+.msg-b{padding:9px 13px;border-radius:13px;font-size:13px;line-height:1.5;}
+.msg-r.bot .msg-b{background:#fff;border:1px solid var(--border);border-radius:3px 13px 13px 13px;}
+.msg-r.user .msg-b{background:var(--brand);color:#fff;border-radius:13px 3px 13px 13px;}
+.m-av{width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.msg-t{font-size:10px;color:var(--muted);margin-top:2px;}
+.msg-r.user .msg-t{text-align:right;}
+.qbtns{background:#fff;border:1px solid var(--border);border-top:none;padding:7px 12px;display:flex;gap:5px;flex-wrap:wrap;}
+.qb{padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:20px;font-size:11px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;transition:all .15s;}
+.qb:hover{background:var(--brand);color:#fff;border-color:var(--brand);}
+.chat-inp-area{background:#fff;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--r) var(--r);padding:9px 12px;display:flex;gap:6px;}
+.c-inp{flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 11px;font-size:13px;font-family:'Nunito',sans-serif;outline:none;}
+.c-inp:focus{border-color:var(--blue);}
+.c-send{background:var(--brand);color:#fff;border:none;border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
+.typing{display:flex;gap:3px;align-items:center;}
+.typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:bnc 1.2s infinite;}
+.typing span:nth-child(2){animation-delay:.2s;}
+.typing span:nth-child(3){animation-delay:.4s;}
+@keyframes bnc{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}
+
+/* NOTIF */
+.np{position:fixed;top:56px;right:14px;width:300px;background:#fff;border-radius:13px;box-shadow:0 10px 40px rgba(0,0,0,.14);border:1px solid var(--border);z-index:400;display:none;overflow:hidden;}
+.np.on{display:block;}
+.np-hd{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.np-tabs{display:flex;border-bottom:1px solid var(--border);}
+.np-tab{flex:1;padding:8px;text-align:center;font-size:11px;font-weight:700;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s;}
+.np-tab.on{color:var(--brand);border-bottom-color:var(--brand);}
+.np-body{max-height:300px;overflow-y:auto;}
+.np-it{padding:10px 13px;border-bottom:1px solid var(--border);cursor:pointer;}
+.np-it:hover{background:#fafbfc;}
+.np-it.unrd{border-left:3px solid var(--blue);}
+.nit{font-size:12px;font-weight:700;}
+.nib{font-size:11px;color:var(--muted);margin-top:1px;}
+.nit-t{font-size:10px;color:var(--muted);margin-top:2px;}
+
+/* INSIGHT */
+.ins-c{background:linear-gradient(135deg,var(--brand2),#1e3a5f);color:#fff;border-radius:11px;padding:14px;margin-bottom:11px;}
+.ins-tag{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:5px;font-weight:800;}
+.ins-txt{font-size:13px;line-height:1.5;}
+.ins-act{font-size:10px;color:rgba(255,255,255,.4);margin-top:6px;}
+
+/* VACANCY */
+.vac{background:#fff;border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:8px;display:flex;gap:11px;box-shadow:var(--sh);}
+.vac-ic{width:42px;height:42px;border-radius:9px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+
+/* PLAN CARD */
+.plan-c{border:2px solid var(--border);border-radius:13px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;position:relative;}
+.plan-c:hover{border-color:var(--brand);transform:translateY(-2px);box-shadow:var(--sh);}
+.plan-c.pop{border-color:var(--accent);}
+.plan-badge{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 10px;border-radius:20px;}
+.plan-name{font-size:13px;font-weight:800;margin-bottom:3px;}
+.plan-price{font-size:28px;font-weight:900;margin:6px 0;}
+.plan-price span{font-size:12px;font-weight:600;color:var(--muted);}
+.plan-f{font-size:11px;color:var(--muted);margin-bottom:4px;}
+
+/* MOOD ANALYTICS */
+.mood-perf-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px;}
+
+/* SYLLABUS BAR */
+.syl-b{margin-bottom:10px;}
+.syl-r{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;}
+.syl-r span:first-child{font-weight:700;}
+
+/* RESULT SCORE */
+.rs-big{background:linear-gradient(135deg,var(--brand2),var(--brand));border-radius:12px;padding:20px;text-align:center;color:#fff;margin-bottom:14px;}
+.rs-val{font-size:58px;font-weight:900;color:var(--accent);line-height:1;}
+.rs-dets{display:flex;justify-content:center;gap:20px;margin-top:11px;font-size:12px;}
+.rs-d-v{font-size:18px;font-weight:800;}
+
+/* ERROR JOURNAL */
+.ej-c{background:#fff;border:1px solid var(--border);border-radius:11px;padding:14px;margin-bottom:9px;}
+.ej-q{font-size:13px;font-weight:700;margin-bottom:9px;line-height:1.5;}
+.ej-row{display:flex;gap:8px;margin-bottom:5px;font-size:12px;}
+.ej-lbl{color:var(--muted);min-width:75px;}
+.ej-expl{background:#fffbeb;border-left:3px solid var(--accent);padding:9px 11px;border-radius:0 7px 7px 0;font-size:12px;color:var(--text);margin-top:7px;line-height:1.5;}
+
+/* MICRO QUIZ BADGE */
+.mq-badge{background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:8px 12px;font-size:12px;color:var(--purple);margin-top:8px;}
+
+/* RING SVG */
+.ring-w{position:relative;display:inline-flex;align-items:center;justify-content:center;}
+.ring-lbl{position:absolute;text-align:center;}
+</style>
+</head>
+<body>
+
+<!-- ═══════ ONBOARDING ═══════ -->
+<div id="ob">
+<div class="ob-logo"><h1>EXAM<span>BHAI</span></h1><p>India's Emotionally-Intelligent Exam Preparation Platform</p></div>
+<div class="ob-box">
+  <div class="ob-step on" id="os1">
+    <div class="ob-prog"><div class="ob-prog-bar"><div class="ob-prog-fill" style="width:25%"></div></div><span class="ob-pg-txt">1/4</span></div>
+    <div class="ob-h">Apna exam chunein 🎯</div>
+    <div class="ob-s">Konsa government exam prepare kar rahe ho?</div>
+    <div class="eg">
+      <div class="eo sel" onclick="pickEx(this,'SSC CGL')"><div class="ei">📋</div><div class="en">SSC CGL</div><div class="es">Tier 1+2</div></div>
+      <div class="eo" onclick="pickEx(this,'SSC CHSL')"><div class="ei">📝</div><div class="en">SSC CHSL</div><div class="es">12th Pass</div></div>
+      <div class="eo" onclick="pickEx(this,'Railways NTPC')"><div class="ei">🚂</div><div class="en">Railways NTPC</div><div class="es">RRB Group</div></div>
+      <div class="eo" onclick="pickEx(this,'SSC MTS')"><div class="ei">🏛️</div><div class="en">SSC MTS</div><div class="es">10th Pass</div></div>
+      <div class="eo" onclick="pickEx(this,'SSC CPO')"><div class="ei">🚔</div><div class="en">SSC CPO</div><div class="es">SI/ASI</div></div>
+      <div class="eo" onclick="pickEx(this,'State PSC')"><div class="ei">📌</div><div class="en">State PSC</div><div class="es">State Level</div></div>
+    </div>
+    <input class="ob-in" placeholder="Aapka naam" value="Rahul Kumar">
+    <input class="ob-in" placeholder="+91 Mobile Number" value="9876543210">
+    <div class="tgrid">
+      <div><div class="ob-lbl">Attempt number</div><select class="ob-in" style="margin:0"><option>Pehla attempt</option><option selected>Doosra attempt</option><option>3rd ya zyada</option></select></div>
+      <div><div class="ob-lbl">Exam date (approx)</div><input type="date" class="ob-in" style="margin:0" value="2026-10-12"></div>
+    </div>
+    <button class="ob-btn" style="margin-top:10px" onclick="obGo(2)">Aage → (1/4)</button>
+  </div>
+
+  <div class="ob-step" id="os2">
+    <div class="ob-prog"><div class="ob-prog-bar"><div class="ob-prog-fill" style="width:50%"></div></div><span class="ob-pg-txt">2/4</span></div>
+    <div class="ob-h">Tera real daily routine 📅</div>
+    <div class="ob-s">Teri asli zindagi ke hisaab se plan banega — no pressure.</div>
+    <div class="tgrid" style="margin-bottom:9px">
+      <div><div class="ob-lbl">Uthne ka time</div><select class="ob-in" style="margin:0"><option>5:00 AM</option><option>6:00 AM</option><option selected>6:30 AM</option><option>7:00 AM</option><option>8:00 AM</option></select></div>
+      <div><div class="ob-lbl">Sone ka time</div><select class="ob-in" style="margin:0"><option>10:00 PM</option><option selected>11:00 PM</option><option>12:00 AM</option></select></div>
+    </div>
+    <div class="ob-lbl">Employment status</div>
+    <select class="ob-in"><option selected>Full-time student</option><option>Working professional</option><option>Part-time (college)</option></select>
+    <div class="ob-lbl">Daily padhai hours (realistic!)</div>
+    <select class="ob-in"><option>1-2 ghante</option><option selected>3-4 ghante</option><option>5-6 ghante</option><option>7+ ghante</option></select>
+    <div class="ob-lbl">Best study time (multiple select)</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Morning (6-10 AM)</label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer"><input type="checkbox" style="accent-color:var(--accent)"> Afternoon</label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Evening+Night</label>
+    </div>
+    <button class="ob-btn" onclick="obGo(3)">Aage → (2/4)</button>
+  </div>
+
+  <div class="ob-step" id="os3">
+    <div class="ob-prog"><div class="ob-prog-bar"><div class="ob-prog-fill" style="width:75%"></div></div><span class="ob-pg-txt">3/4</span></div>
+    <div class="ob-h">Kya padh chuke ho? 📚</div>
+    <div class="ob-s">Tick karo jo cover ho chuka hai — wahan directly mock tests lagenge.</div>
+    <div class="t-scroll">
+      <div class="topic-sec">
+        <div class="topic-sec-hd"><span>📐 Quantitative Aptitude</span><button class="sa-btn" onclick="selA('q')">Sab select</button></div>
+        <div class="topic-g">
+          <label class="ti ck"><input type="checkbox" checked data-g="q">Number System</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="q">Percentage</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="q">Profit & Loss</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="q">Ratio & Proportion</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="q">Time & Work</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="q">Speed & Distance</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="q">Simple Interest</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="q">Compound Interest</label>
+          <label class="ti"><input type="checkbox" data-g="q">Algebra</label>
+          <label class="ti"><input type="checkbox" data-g="q">Geometry</label>
+          <label class="ti"><input type="checkbox" data-g="q">Trigonometry</label>
+          <label class="ti"><input type="checkbox" data-g="q">Mensuration</label>
+          <label class="ti"><input type="checkbox" data-g="q">Data Interpretation</label>
+          <label class="ti"><input type="checkbox" data-g="q">Statistics</label>
+        </div>
+      </div>
+      <div class="topic-sec">
+        <div class="topic-sec-hd"><span>🧠 Reasoning</span><button class="sa-btn" onclick="selA('r')">Sab select</button></div>
+        <div class="topic-g">
+          <label class="ti ck"><input type="checkbox" checked data-g="r">Analogy</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="r">Series</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="r">Coding-Decoding</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="r">Syllogism</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="r">Direction Sense</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="r">Blood Relations</label>
+          <label class="ti"><input type="checkbox" data-g="r">Puzzles</label>
+          <label class="ti"><input type="checkbox" data-g="r">Matrix</label>
+          <label class="ti"><input type="checkbox" data-g="r">Venn Diagrams</label>
+          <label class="ti"><input type="checkbox" data-g="r">Ranking & Order</label>
+        </div>
+      </div>
+      <div class="topic-sec">
+        <div class="topic-sec-hd"><span>📖 English</span><button class="sa-btn" onclick="selA('e')">Sab select</button></div>
+        <div class="topic-g">
+          <label class="ti ck"><input type="checkbox" checked data-g="e">Reading Comp.</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="e">Fill in Blanks</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="e">Error Detection</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="e">Para Jumble</label>
+          <label class="ti"><input type="checkbox" data-g="e">Synonyms</label>
+          <label class="ti"><input type="checkbox" data-g="e">Antonyms</label>
+          <label class="ti"><input type="checkbox" data-g="e">Cloze Test</label>
+          <label class="ti"><input type="checkbox" data-g="e">Idioms & Phrases</label>
+          <label class="ti"><input type="checkbox" data-g="e">One Word Sub.</label>
+          <label class="ti"><input type="checkbox" data-g="e">Spelling</label>
+        </div>
+      </div>
+      <div class="topic-sec">
+        <div class="topic-sec-hd"><span>🌍 General Awareness</span><button class="sa-btn" onclick="selA('g')">Sab select</button></div>
+        <div class="topic-g">
+          <label class="ti ck"><input type="checkbox" checked data-g="g">Indian History</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="g">Geography</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="g">Indian Polity</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="g">Economy</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="g">Science & Tech</label>
+          <label class="ti ck"><input type="checkbox" checked data-g="g">Sports</label>
+          <label class="ti"><input type="checkbox" data-g="g">Current Affairs</label>
+          <label class="ti"><input type="checkbox" data-g="g">Govt. Schemes</label>
+          <label class="ti"><input type="checkbox" data-g="g">Books & Authors</label>
+          <label class="ti"><input type="checkbox" data-g="g">Awards</label>
+        </div>
+      </div>
+    </div>
+    <button class="ob-btn" style="margin-top:11px" onclick="obGo(4)">🤖 AI Plan Generate Karo (3/4)</button>
+  </div>
+
+  <div class="ob-step" id="os4">
+    <div class="ob-prog"><div class="ob-prog-bar"><div class="ob-prog-fill" style="width:100%"></div></div><span class="ob-pg-txt">4/4</span></div>
+    <div style="text-align:center;padding:6px 0">
+      <div style="font-size:44px;margin-bottom:10px">🎯</div>
+      <div class="ob-h" style="font-size:20px">Plan ready hai, Rahul!</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:16px;line-height:1.6">AI ne tera SSC CGL plan 204 remaining days ke liye banaya. Syllabus 58% cover ho chuka hai.</div>
+      <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);border-radius:11px;padding:14px;margin-bottom:14px">
+        <div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">Initial Readiness Score</div>
+        <div style="font-size:46px;font-weight:900;color:var(--accent)">58<span style="font-size:20px;color:rgba(255,255,255,.3)">/100</span></div>
+        <div style="font-size:11px;color:rgba(255,255,255,.4)">SSC CGL cutoff target: 72+ · Plan follow karo → 76 in 90 days</div>
+      </div>
+      <div style="background:rgba(255,255,255,.05);border-radius:10px;padding:12px;font-size:11px;text-align:left;margin-bottom:14px">
+        <div style="color:rgba(255,255,255,.6);font-weight:700;margin-bottom:6px">📅 Kal ka plan (Preview):</div>
+        <div style="color:rgba(255,255,255,.5);margin-bottom:3px">🕕 6:30-7:15 AM — Quant: Algebra Word Problems (45 min)</div>
+        <div style="color:rgba(255,255,255,.5);margin-bottom:3px">🧠 7:15-7:30 AM — Micro-quiz: 3 questions to validate</div>
+        <div style="color:rgba(255,255,255,.5)">🌙 8:00-8:30 PM — English: Synonyms Practice</div>
+      </div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px">✅ Personalized kyunki: Algebra weak hai (38%) · Morning best time · CGL mein 8-12 qs</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="ob-btn" style="flex:1;margin-top:0" onclick="launch()">🚀 Start Free Trial</button>
+      <button class="ob-btn" style="flex:0.6;margin-top:0;background:rgba(255,255,255,.1);color:#fff" onclick="launch()">Upgrade ₹99</button>
+    </div>
+    <div style="font-size:10px;color:rgba(255,255,255,.3);text-align:center;margin-top:6px">7-day outcome guarantee · No auto-renewal · Feel clearer or full refund</div>
+  </div>
+</div>
+</div>
+
+<!-- NOTIF PANEL -->
+<div id="np" class="np">
+  <div class="np-hd"><strong style="font-size:13px">Notifications</strong><span style="font-size:11px;color:var(--blue);cursor:pointer">Mark all read</span></div>
+  <div class="np-tabs">
+    <div class="np-tab on" onclick="npT(this,'np-a')">🔔 Alerts</div>
+    <div class="np-tab" onclick="npT(this,'np-v')">📋 Vacancies</div>
+  </div>
+  <div id="np-a" class="np-body">
+    <div class="np-it unrd"><div class="nit">🌞 Morning check-in ready!</div><div class="nib">How are you feeling today? Mood se plan adjust hoga.</div><div class="nit-t">Abhi</div></div>
+    <div class="np-it unrd"><div class="nit">⚠️ Error Journal — 2 due today</div><div class="nib">Algebra + Idioms — 7-day spaced repetition cycle.</div><div class="nit-t">1 ghanta pehle</div></div>
+    <div class="np-it unrd"><div class="nit">📈 Weekly Habit Report Ready</div><div class="nib">Quant accuracy +8% this week. 3 tasks skipped due to "Too difficult".</div><div class="nit-t">Kal</div></div>
+    <div class="np-it"><div class="nit">✅ Flag Resolved — Q47 Algebra</div><div class="nib">Your reported question has been reviewed. Option C is confirmed correct.</div><div class="nit-t">2 din pehle</div></div>
+    <div class="np-it"><div class="nit">💙 Burnout Check</div><div class="nib">3 consecutive "Stressed" days detected. Plan lightened by 30% automatically.</div><div class="nit-t">3 din pehle</div></div>
+  </div>
+  <div id="np-v" class="np-body hidden">
+    <div class="np-it unrd"><div class="nit">🆕 SSC CGL 2026 — 17,727 Posts</div><div class="nib">Last date: April 10, 2026. Apply now.</div><div class="nit-t">Aaj</div></div>
+    <div class="np-it unrd"><div class="nit">🆕 SSC CHSL 2026 — 7,099 Posts</div><div class="nib">70% overlap with your CGL plan. One-tap plan merge available.</div><div class="nit-t">Aaj</div></div>
+    <div class="np-it"><div class="nit">📊 RRB NTPC Result Out</div><div class="nib">Check your application status on official RRB website.</div><div class="nit-t">2 din pehle</div></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="mo" class="mo"><div class="mo-box" id="moInner"></div></div>
+
+<!-- APP -->
+<div id="app">
+  <!-- Sidebar -->
+  <div class="sb">
+    <div class="sb-hd">
+      <div class="sb-logo">EXAM<span>BHAI</span></div>
+      <div class="sb-user"><div class="sb-av">R</div><div><div class="sb-nm">Rahul Kumar</div><div class="sb-ex">SSC CGL 2026</div></div></div>
+    </div>
+    <div class="sb-sc">
+      <div class="sb-sc-lbl">Readiness Score</div>
+      <div class="sb-sc-val">62<span style="font-size:13px;color:rgba(255,255,255,.3)">/100</span></div>
+      <div class="sb-sc-sub">Target: 72+ &nbsp;|&nbsp; 204 din bache</div>
+      <div class="sb-sc-bar"><div class="sb-sc-fill" style="width:62%"></div></div>
+    </div>
+    <div class="nav-g">
+      <div class="nav-lbl">Main</div>
+      <div class="ni on" id="n-home" onclick="go('home')"><span class="ic">🏠</span>Aaj ka Plan</div>
+      <div class="ni" id="n-planner" onclick="go('planner')"><span class="ic">📅</span>Planner</div>
+      <div class="ni" id="n-tests" onclick="go('tests')"><span class="ic">📝</span>Mock Tests</div>
+      <div class="ni" id="n-pyp" onclick="go('pyp')"><span class="ic">📚</span>Previous Papers</div>
+      <div class="nav-lbl">Learn</div>
+      <div class="ni" id="n-ca" onclick="go('ca')"><span class="ic">📰</span>Current Affairs</div>
+      <div class="ni" id="n-results" onclick="go('results')"><span class="ic">🏆</span>Results</div>
+      <div class="ni" id="n-analytics" onclick="go('analytics')"><span class="ic">📊</span>Analytics</div>
+      <div class="ni" id="n-coach" onclick="go('coach')"><span class="ic">🤖</span>EXAMBHAI Coach</div>
+      <div class="nav-lbl">Account</div>
+      <div class="ni" id="n-profile" onclick="go('profile')"><span class="ic">👤</span>Profile</div>
+      <div class="ni" id="n-billing" onclick="go('billing')"><span class="ic">💳</span>Billing</div>
+      <div class="ni" id="n-vacancy" onclick="go('vacancy')"><span class="ic">🔔</span>Vacancy Alerts</div>
+    </div>
+    <div class="sb-ft">
+      <div class="sb-days">Exam mein <b>204</b> din bache</div>
+      <button class="logout" onclick="document.getElementById('app').classList.remove('on');document.getElementById('ob').classList.remove('hidden')">← Logout</button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="tb">
+      <div class="tb-title" id="ttl">Aaj ka Plan</div>
+      <div class="tb-r">
+        <div class="streak">🔥 8 din streak</div>
+        <button class="btn btn-sm" style="background:#faf5ff;color:var(--purple);border:1px solid #e9d5ff;font-size:11px" onclick="showMoodCheckin()">😊 Mood Check-in</button>
+        <div class="bell-w" onclick="toggleNp()"><div class="bell">🔔</div><div class="bell-n" id="bbn">5</div></div>
+      </div>
+    </div>
+    <div class="cont" id="mc"></div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════
+   DEMO DATA
+═══════════════════════════════════ */
+const D={
+  student:{name:'Rahul Kumar',exam:'SSC CGL 2026',days:204,score:62,streak:8,attempt:2,mood:'Normal / Okay',mood_today_done:false},
+  subjects:{Quant:{acc:62,spd:24,trend:+8},Reasoning:{acc:71,spd:16,trend:+4},English:{acc:44,spd:18,trend:-2},GK:{acc:55,spd:12,trend:+5}},
+  syllabus:{Quant:{done:9,total:14},Reasoning:{done:8,total:10},English:{done:4,total:10},GK:{done:7,total:10}},
+  moodHistory:[
+    {date:'Mar 20',mood:'Stressed',comp:45},{date:'Mar 19',mood:'Very Stressed',comp:30},
+    {date:'Mar 18',mood:'Stressed',comp:50},{date:'Mar 17',mood:'Normal / Okay',comp:70},
+    {date:'Mar 16',mood:'Calm & Focused',comp:88},{date:'Mar 15',mood:'Normal / Okay',comp:65},{date:'Mar 14',mood:'Calm & Focused',comp:85}
+  ],
+  skipReasons:{tooD:4,noTime:2,feeling:3,knew:1},
+  tasks:[
+    {id:0,time:'6:30 AM',sub:'Reasoning',topic:'Coding-Decoding — Advanced Practice',dur:'40 min',type:'study',color:'#0891b2',done:true,skipped:false,inprog:false},
+    {id:1,time:'7:15 AM',sub:'Reasoning',topic:'Micro-quiz: Coding-Decoding (3 Qs)',dur:'10 min',type:'quiz',color:'#7c3aed',done:true,skipped:false,inprog:false},
+    {id:2,time:'8:00 PM',sub:'English',topic:'Synonyms & Antonyms — SSC Wordlist',dur:'45 min',type:'study',color:'#7c3aed',done:false,skipped:false,inprog:false},
+    {id:3,time:'8:50 PM',sub:'Quantitative',topic:'Algebra: Word Problems — Translation Method',dur:'35 min',type:'study',color:'#2563eb',done:false,skipped:false,inprog:false},
+    {id:4,time:'9:30 PM',sub:'Mock Test',topic:'Quant Sectional — Algebra & Percentage',dur:'25 min',type:'mock',color:'#7c3aed',done:false,skipped:false,inprog:false},
+    {id:5,time:'10:00 PM',sub:'GK',topic:'Indian History: Modern Period (1757-1857)',dur:'25 min',type:'study',color:'#059669',done:false,skipped:false,inprog:false},
+  ],
+  tests:[
+    {id:'T1',name:'SSC CGL Full Mock #4',date:'20 Mar',score:74,total:200,rank:842,tr:12450,cor:74,wr:22,sk:4,secs:{Quant:{s:22,t:50},Reasoning:{s:28,t:50},English:{s:14,t:50},GK:{s:10,t:50}}},
+    {id:'T2',name:'Quant Sectional: Algebra',date:'17 Mar',score:19,total:50,rank:1204,tr:8900,cor:19,wr:6,sk:0},
+    {id:'T3',name:'SSC CGL Full Mock #3',date:'14 Mar',score:68,total:200,rank:1120,tr:11800,cor:68,wr:28,sk:4},
+    {id:'T4',name:'English Sectional: Grammar',date:'12 Mar',score:17,total:50,rank:3210,tr:9200,cor:17,wr:12,sk:1},
+    {id:'T5',name:'GK: Current Affairs March',date:'10 Mar',score:13,total:30,rank:2100,tr:7500,cor:13,wr:4,sk:2},
+    {id:'T6',name:'SSC CGL Full Mock #2',date:'7 Mar',score:62,total:200,rank:1540,tr:10200,cor:62,wr:32,sk:6},
+  ],
+  flags:[
+    {id:'F1',q:'Q47 — Algebra (Mock #4)',flagged:'Mar 20',reason:'Correct answer seems wrong',status:'resolved',resolution:"After AI re-analysis + expert review: Option C (100) is correct. Common mistake: forgetting to multiply by 5 when clearing denominator. Hint added to explanation."},
+    {id:'F2',q:'Q23 — English: Cloze Test (Mock #3)',flagged:'Mar 14',reason:'Question is unclear/ambiguous',status:'pending',resolution:''},
+  ],
+  errorJ:[
+    {id:1,sub:'Quant',top:'Algebra',q:'If 3 times a number exceeds its 3/5 by 144, find the number.',your:'120',correct:'100',expl:'Aapne shayad 144×5=720, 720÷12=60 mein galti ki. Sahi hai: 3x-(3/5)x=144 → 12x/5=144 → x=60. ✅ Tip: "A exceeds B by C" = A-B=C',next:'27 Mar',att:3},
+    {id:2,sub:'English',top:'Idioms',q:'"Bite the bullet" ka matlab kya hai?',your:'Bullet se darana',correct:'Himmat se mushkil jhhelna',expl:'Literal mat socho — idioms ka meaning different hota hai. "Bite the bullet" = endure something painful courageously. SSC mein common hai.',next:'26 Mar',att:2},
+    {id:3,sub:'Reasoning',top:'Syllogism',q:'All cats are dogs. Some dogs are birds. Some cats are birds. True/False?',your:'True',correct:'Cannot be determined',expl:"Syllogism mein sirf given statements se conclusion nikalna hai. 'Some dogs are birds' se zaruri nahi ki cats wale dogs birds hon.",next:'29 Mar',att:2},
+    {id:4,sub:'GK',top:'Economy',q:'India ki FY2025-26 GDP growth rate (IMF estimate)?',your:'7.8%','correct':'6.4%',expl:'IMF ne Jan 2026 mein India FY26 GDP 6.4% estimate ki. World Bank ne 6.5%. Dynamic current affairs track karna zaroori.',next:'25 Mar',att:1},
+  ],
+  testQs:[
+    {q:'A train travels 360 km in 4 hours. Speed in m/s?',opts:['25 m/s','30 m/s','20 m/s','22.5 m/s'],ans:0,sub:'Quant',top:'Speed',expl:'360÷4=90 km/h → ×(1000/3600) = 25 m/s'},
+    {q:'A:B=3:4 and B:C=5:6. A:B:C=?',opts:['15:20:24','3:5:6','15:24:20','9:12:16'],ans:0,sub:'Quant',top:'Ratio',expl:'A:B=15:20, B:C=20:24 → A:B:C=15:20:24'},
+    {q:'"Penultimate" means:',opts:['Last','Second to last','Third','First'],ans:1,sub:'English',top:'Vocab',expl:'Penultimate = second to last. Common in SSC CGL Tier-1.'},
+    {q:'All cats are dogs. Some dogs are birds. Some cats are birds — TRUE/FALSE?',opts:['True','False','Cannot be determined','Partially true'],ans:2,sub:'Reasoning',top:'Syllogism',expl:'Cannot be determined — overlap not guaranteed.'},
+    {q:'India is the ___ largest country by area.',opts:['5th','7th','6th','8th'],ans:1,sub:'GK',top:'Geography',expl:'India is 7th largest (3.287 million km²).'},
+  ],
+  caQs:[
+    {q:'India-Japan ne 2026 mein konse sector mein deal sign ki?',opts:['Defence','Semiconductor','Agriculture','Railways'],ans:1,expl:'India-Japan semiconductor manufacturing collaboration — Feb 2026.'},
+    {q:'Budget 2026-27 mein income tax exemption limit?',opts:['Rs 5L','Rs 7L','Rs 10L','Rs 12L'],ans:3,expl:'New tax regime mein Rs 12 lakh exemption — Budget 2026-27.'},
+    {q:'ICC Champions Trophy 2026 ka host country?',opts:['India','Pakistan','UAE','South Africa'],ans:1,expl:'Pakistan ne ICC Champions Trophy 2026 host kiya.'},
+    {q:'India forex reserve 2026 approximately?',opts:['$500B','$580B','$650B','$720B'],ans:2,expl:'India forex reserve $650 billion ke paar gaya 2026 mein.'},
+    {q:'RBI repo rate March 2026?',opts:['5.75%','6.00%','6.25%','6.50%'],ans:2,expl:'RBI ne repo rate 6.25% par stable rakha — 4th consecutive meeting.'},
+  ],
+  vacancies:[
+    {ic:'📋',title:'SSC CGL 2026',posts:'17,727',dept:'Various Ministries',last:'April 10, 2026',exam:'Aug–Sep 2026',isNew:true},
+    {ic:'📝',title:'SSC CHSL 2026',posts:'7,099',dept:'LDC, JSA, PA, SA',last:'April 30, 2026',exam:'Sep–Oct 2026',isNew:true},
+    {ic:'🚂',title:'RRB NTPC Phase 2',posts:'11,558',dept:'Railways',last:'Result Declared',exam:'Result: March 2026',isNew:false},
+    {ic:'🏛️',title:'SSC MTS 2025',posts:'9,583',dept:'Various Depts',last:'Closed',exam:'June–July 2026',isNew:false},
+  ],
+};
+
+let tAns={},tCurr=0,tTimer,tSecs=1800;
+let caAns={},caTimerInt;
+let chartsInited={};
+
+/* ═══════ ONBOARDING ═══════ */
+function pickEx(el,n){document.querySelectorAll('.eo').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');}
+function obGo(n){document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('on'));document.getElementById('os'+n).classList.add('on');}
+function selA(g){document.querySelectorAll(`input[data-g="${g}"]`).forEach(cb=>{cb.checked=true;cb.closest('.ti').classList.add('ck');});}
+document.querySelectorAll('.ti input').forEach(cb=>{cb.addEventListener('change',function(){this.closest('.ti').classList.toggle('ck',this.checked);});});
+function launch(){
+  document.getElementById('ob').classList.add('hidden');
+  document.getElementById('app').classList.add('on');
+  go('home');
+  setTimeout(()=>showMoodCheckin(),1200);
+}
+
+/* ═══════ NAV ═══════ */
+const TITLES={home:'Aaj ka Plan (Home)',planner:'Planner',tests:'Mock Tests',pyp:'Previous Year Papers',ca:'Current Affairs',results:'Results',analytics:'Analytics',coach:'EXAMBHAI Coach AI',profile:'Profile',billing:'Billing',vacancy:'Vacancy Alerts'};
+function go(sec){
+  document.querySelectorAll('.ni').forEach(e=>e.classList.remove('on'));
+  const ni=document.getElementById('n-'+sec);if(ni)ni.classList.add('on');
+  document.getElementById('ttl').textContent=TITLES[sec]||sec;
+  const fn=PAGES[sec];
+  document.getElementById('mc').innerHTML=fn?fn():'<p style="color:var(--muted)">Coming soon</p>';
+  if(sec==='analytics')setTimeout(initCharts,100);
+  if(sec==='coach'){}
+  if(sec==='ca')initCA();
+  if(sec==='profile')setTimeout(initProfileChart,100);
+}
+function toggleNp(){document.getElementById('np').classList.toggle('on');}
+function npT(el,id){document.querySelectorAll('.np-tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.np-body').forEach(b=>b.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');}
+document.addEventListener('click',e=>{if(!e.target.closest('#np')&&!e.target.closest('.bell-w'))document.getElementById('np').classList.remove('on');});
+document.getElementById('mo').addEventListener('click',function(e){if(e.target===this)this.classList.remove('on');});
+function closeMo(){document.getElementById('mo').classList.remove('on');}
+function swTab(el,id){const p=el.closest('.sec')||document.getElementById('mc');p.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));p.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));el.classList.add('on');const t=document.getElementById(id);if(t)t.classList.add('on');}
+
+/* ═══════ MOOD CHECK-IN ═══════ */
+function showMoodCheckin(){
+  document.getElementById('moInner').innerHTML=`
+  <div class="mo-hd"><h3>🌞 Morning Check-in</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:14px">How are you feeling right now? Plan ko mood ke hisaab se adjust karenge.</div>
+  <div id="mood-opts" style="display:flex;flex-direction:column;gap:8px">
+    ${[['😊 Calm & Focused','Shant aur focused','optimal'],['😐 Normal / Okay','Theek hoon','neutral'],['😟 Stressed','Thoda pressure hai','stressed'],['😰 Very Stressed','Bahut zyada tension','very_stressed'],['😴 Low Energy / Tired','Thakan lag rahi hai','low_energy']].map(([l,h,v])=>`
+    <div class="opt" onclick="selectMood('${v}','${l}',this)" style="padding:12px 14px">
+      <div style="flex:1"><div style="font-size:13px;font-weight:700">${l}</div><div style="font-size:11px;color:var(--muted)">${h}</div></div>
+    </div>`).join('')}
+  </div>
+  <div style="margin-top:12px"><input class="fc" placeholder="Optional note: Kuch aur share karna hai? (Skip kar sakte ho)" style="font-size:12px"></div>
+  <div style="display:flex;gap:8px;margin-top:14px">
+    <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Skip</button>
+    <button class="btn btn-br" style="flex:1" id="mood-submit" onclick="submitMood()" disabled>Log Feeling</button>
+  </div>
+  <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:8px">🔒 Ye data sirf tumhara plan personalize karne ke liye use hoga. Kabhi share nahi hoga.</div>`;
+  document.getElementById('mo').classList.add('on');
+}
+let selectedMoodV='';
+function selectMood(v,l,el){
+  selectedMoodV=v;
+  document.querySelectorAll('#mood-opts .opt').forEach(o=>o.classList.remove('sel'));
+  el.classList.add('sel');
+  document.getElementById('mood-submit').disabled=false;
+}
+function submitMood(){
+  D.student.mood_today_done=true;
+  const msgs={optimal:"Focus accha hai! Chalo aaj ek weak topic challenge karein. 🚀",neutral:"Chalo aaj ka plan shuru karte hain. Step by step, aap kar lenge! 💪",stressed:"Thoda pressure hai? Pehle ek aasaan topic se confidence banao. 💙",very_stressed:"Lagta hai bahut pressure hai. Aaj thoda light chalo — kal fresh start. 🤗",low_energy:"Energy kam hai toh chhote sessions karo. 20 min padh ke 5 min break lo. 🙏"};
+  document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px">
+    <div style="font-size:44px;margin-bottom:10px">${selectedMoodV==='optimal'?'🚀':selectedMoodV==='very_stressed'?'🤗':selectedMoodV==='low_energy'?'🙏':'💙'}</div>
+    <h3 style="margin-bottom:8px">Shukriya, Rahul!</h3>
+    <div style="background:var(--bg);border-radius:10px;padding:12px;font-size:13px;margin-bottom:14px">${msgs[selectedMoodV]||msgs.neutral}</div>
+    ${selectedMoodV==='very_stressed'?'<div class="alt a-p">💙 Plan mein aaj 2 tasks reduce kar diye — sirf high-priority karo. Kal normal schedule resume hoga.</div>':''}
+    <button class="btn btn-br" style="width:100%" onclick="closeMo()">Shuru Karein ✅</button>
+  </div>`;
+}
+
+/* ═══════ PAGES ═══════ */
+const PAGES={
+
+/* HOME */
+home:()=>{
+  const done=D.tasks.filter(t=>t.done).length,total=D.tasks.length,pct=Math.round(done/total*100);
+  const moodSet=D.student.mood_today_done;
+  return `
+<div class="sr">
+  <div class="sc"><div class="sc-i">🎯</div><div class="sc-v">${D.student.score}<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="sc-l">Readiness Score</div><div class="sc-c up">▲ +4 this week</div></div>
+  <div class="sc"><div class="sc-i">📋</div><div class="sc-v">${done}/${total}</div><div class="sc-l">Tasks Done Today</div><div class="sc-c ${done>2?'up':''}">Aaj ka progress</div></div>
+  <div class="sc"><div class="sc-i">🔥</div><div class="sc-v">${D.student.streak}</div><div class="sc-l">Din Streak</div><div class="sc-c up">▲ Personal best!</div></div>
+  <div class="sc"><div class="sc-i">⏳</div><div class="sc-v">${D.student.days}</div><div class="sc-l">Din Bache</div><div class="sc-c dn">Exam tak</div></div>
+</div>
+
+${!moodSet?`<div class="mood-card">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-size:13px;font-weight:800">🌞 Morning Check-in</div><div style="font-size:11px;opacity:.55;margin-top:2px">Mood se aaj ka plan adjust karein</div></div>
+    <button class="btn btn-sm" style="background:var(--accent);color:#1a1a1a" onclick="showMoodCheckin()">Log Feeling</button>
+  </div>
+</div>`:
+`<div class="alt a-s" style="margin-bottom:14px">✅ Check-in done! Plan mood ke hisaab se set hai — <strong>${D.student.mood}</strong>. Evening check-in 8 PM pe aayega.</div>`}
+
+<div class="g2">
+<div>
+  <div class="card">
+    <div class="ch"><h3>📋 Aaj ke Tasks — Guruwar, 20 March</h3>
+      <div style="display:flex;align-items:center;gap:7px">
+        <div style="font-size:11px;color:var(--muted)">${done}/${total} done</div>
+        <div class="pb h8" style="width:80px"><div class="pf a-f" style="width:${pct}%"></div></div>
+      </div>
+    </div>
+    <div class="cb" style="padding-top:10px" id="task-list">${renderTasks(true)}</div>
+  </div>
+</div>
+<div>
+  <div class="card" style="margin-bottom:12px">
+    <div class="ch"><h3>📅 Next 3 Days Preview</h3></div>
+    <div class="cb" style="padding:11px">
+      ${[{d:'Kal (Fri)',tasks:['English: Cloze Test (40 min)','GK: Geography (30 min)','Quant Sectional Mock']},
+         {d:'Shaniwar',tasks:['Quant: Trigonometry (45 min)','Revision: Percentage','Weekly CBT Simulation']},
+         {d:'Ravivar (Rest)',tasks:['Optional: Error Journal Review','Weekly progress report']},
+      ].map(day=>`<div style="margin-bottom:13px"><div style="font-size:11px;font-weight:800;color:var(--brand);margin-bottom:6px">${day.d}</div>${day.tasks.map(t=>`<div style="font-size:11px;color:var(--muted);padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:6px"><span style="color:var(--accent)">•</span>${t}</div>`).join('')}</div>`).join('')}
+    </div>
+  </div>
+  <div class="ins-c">
+    <div class="ins-tag">🤖 AI Insight — Aaj</div>
+    <div class="ins-txt">English score <strong>44/100</strong> — sabse kamzor. Aaj Synonyms pe 45 min focus sabse zyada impact dega final score pe. Exam mein 5 guaranteed qs hain.</div>
+    <div class="ins-act">→ Task #3 pehle complete karo</div>
+  </div>
+</div>
+</div>`;},
+
+/* PLANNER */
+planner:()=>`
+<div class="ws">
+  ${['Mon\n17','Tue\n18','Wed\n19','Thu\n20','Fri\n21','Sat\n22','Sun\n23'].map((d,i)=>{
+    const[day,num]=d.split('\n');
+    const cls=i===3?'today':i<3?'done-d':i===4?'part-d':'';
+    const dot=i<3?'#10b981':i===3?'#3b82f6':i===4?'#f59e0b':'#cbd5e1';
+    const mood=i<2?'😊':i===2?'😟':i===3?'😐':'';
+    return `<div class="day ${cls}" onclick="showDayDetail(${i})"><div class="day-n">${day}</div><div class="day-num">${num}</div><div class="day-dot" style="background:${dot}"></div>${mood?`<div class="mood-i">${mood}</div>`:''}</div>`;
+  }).join('')}
+</div>
+
+<div class="g2">
+<div>
+  <div class="card">
+    <div class="ch"><h3>📋 Guruwar, 20 March — Aaj</h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-gh" onclick="showModal('skipped_view')">↪ Skipped Tasks</button>
+        <button class="btn btn-sm btn-gh" onclick="showModal('strategic_skip')">⚠️ AI Suggestion</button>
+      </div>
+    </div>
+    <div class="cb" style="padding-top:10px">${renderTasks(true)}</div>
+  </div>
+</div>
+<div>
+  <div class="card" style="margin-bottom:12px">
+    <div class="ch"><h3>📚 Syllabus Progress</h3></div>
+    <div class="cb">
+      ${Object.entries(D.syllabus).map(([sub,d])=>{const pct=Math.round(d.done/d.total*100);return `<div class="syl-b"><div class="syl-r"><span>${sub}</span><span style="color:var(--muted)">${d.done}/${d.total} (${pct}%)</span></div><div class="pb h8"><div class="pf ${pct>=70?'g-f':pct>=50?'a-f':'r-f'}" style="width:${pct}%"></div></div></div>`;}).join('')}
+      <div style="border-top:1px solid var(--border);padding-top:11px;margin-top:4px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><strong>Overall Syllabus</strong><strong style="color:var(--accent)">58%</strong></div>
+        <div class="pb h10"><div class="pf a-f" style="width:58%"></div></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">📅 At current pace: complete by June 15, 2026 ✅</div>
+      </div>
+      <div style="margin-top:14px"><div style="font-size:11px;font-weight:800;color:var(--red);margin-bottom:6px">⚠️ Weak Topic Queue (Active Review)</div>
+        ${[{t:'Algebra: Word Problems',acc:38,days:3,freq:'Daily'},
+           {t:'English: Synonyms',acc:36,days:5,freq:'Daily'},
+           {t:'GK: Govt. Schemes',acc:42,days:2,freq:'Alt. Days'},
+        ].map(w=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px;background:var(--bg);border-radius:7px;margin-bottom:5px;font-size:11px">
+          <div><div style="font-weight:700">${w.t}</div><div style="color:var(--muted)">${w.days} days in review · ${w.freq}</div></div>
+          <span class="bdg r">${w.acc}%</span>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ch"><h3>📝 Upcoming Mocks (7 days)</h3></div>
+    <div class="cb" style="padding:11px">
+      ${[['Kal','Quant: Trig Sectional','Why: New topic studied this week'],
+         ['22 Mar','SSC CGL Full Mock #5','Why: Weekly simulation'],
+         ['24 Mar','English Vocab Special','Why: Score only 36% — urgent'],
+      ].map(([d,n,r])=>`<div style="display:flex;gap:9px;margin-bottom:11px;align-items:start">
+        <div style="background:var(--brand);color:#fff;border-radius:6px;padding:3px 7px;font-size:10px;font-weight:700;min-width:38px;text-align:center">${d}</div>
+        <div style="flex:1"><div style="font-size:12px;font-weight:700">${n}</div><div style="font-size:10px;color:var(--muted)">${r}</div></div>
+      </div>`).join('')}
+    </div>
+  </div>
+</div>
+</div>`,
+
+/* MOCK TESTS */
+tests:()=>`
+<div class="tabs">
+  <div class="tab on" onclick="swTab(this,'t1')">🤖 AI Recommended</div>
+  <div class="tab" onclick="swTab(this,'t2')">📑 Chapter-wise</div>
+  <div class="tab" onclick="swTab(this,'t3')">🎯 Full Exam CBT</div>
+  <div class="tab" onclick="swTab(this,'t4')">📜 History & Downloads</div>
+</div>
+<div id="t1" class="tc on">
+  <div class="alt a-i">🤖 AI ne teri weak areas, is hafte ki study, aur exam pattern ke basis pe ye tests recommend kiye hain.</div>
+  <div class="g2">
+    ${[{n:'English: Synonyms & Antonyms',sub:'English',q:20,time:'15 min',why:'Score 36% — sabse weak topic. CGL mein 4-5 qs guaranteed.',type:'Weak Area',col:'r'},
+       {n:'Quant: Algebra Word Problems',sub:'Quant',q:25,time:'20 min',why:'Error Journal mein 3 repeat mistakes. Concept gap hai.',type:'Error Journal',col:'o'},
+       {n:'Reasoning: Puzzles & Matrix',sub:'Reasoning',q:15,time:'18 min',why:'Naya topic — abhi tak attempt nahi hua.',type:'Not Tested',col:'b'},
+       {n:'SSC CGL Full Mock #5',sub:'All Subjects',q:100,time:'60 min',why:'Weekly simulation — har hafte ek full mock track karta hai.',type:'Weekly',col:'g'},
+    ].map(t=>`<div class="card"><div class="cb">
+      <div style="display:flex;justify-content:space-between;margin-bottom:9px"><span class="bdg ${t.col}">${t.type}</span><span class="bdg gr">${t.sub}</span></div>
+      <div style="font-size:14px;font-weight:800;margin-bottom:5px">${t.n}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:7px">📝 ${t.q} Qs · ⏱ ${t.time} · -0.5 negative</div>
+      <div style="font-size:11px;background:var(--bg);border-radius:7px;padding:7px;margin-bottom:11px;color:var(--muted)">🤖 <strong>Kyun:</strong> ${t.why}</div>
+      <button class="btn btn-br" style="width:100%" onclick="startTest('${t.n}')">▶ Start Test</button>
+    </div></div>`).join('')}
+  </div>
+</div>
+<div id="t2" class="tc">
+  ${['📐 Quantitative Aptitude','🧠 Reasoning','📖 English','🌍 GK'].map((sub,si)=>`
+  <div class="card" style="margin-bottom:12px">
+    <div class="ch"><h3>${sub}</h3><div style="display:flex;gap:6px">
+      <button class="btn btn-xs btn-gh">Not Attempted</button>
+      <button class="btn btn-xs" style="background:#fee2e2;color:#991b1b">Weak ▼</button>
+    </div></div>
+    <div class="cb" style="padding:10px">
+    <table>
+      <tr><th>Chapter</th><th>Tests</th><th>Best Score</th><th>Status</th><th>Start</th></tr>
+      ${[['Percentage',3,'38/50','done'],['Profit & Loss',2,'—','not'],['Algebra',4,'—','not'],['Geometry',3,'29/50','done'],['Trigonometry',2,'—','not']].slice(0,si===0?5:3).map(([ch,n,sc,st])=>`<tr>
+        <td style="font-weight:700">${ch}${st==='not'?'':''}</td><td>${n}</td>
+        <td><span class="bdg ${st==='done'?(parseInt(sc)>=70?'g':'o'):'gr'}">${sc}</span></td>
+        <td><span class="bdg ${st==='done'?'g':'gr'}">${st==='done'?'Done':'Not Done'}</span></td>
+        <td><button class="btn btn-xs btn-br" onclick="startTest('${ch} Test')">▶ Start</button></td>
+      </tr>`).join('')}
+    </table></div>
+  </div>`).join('')}
+</div>
+<div id="t3" class="tc">
+  <div class="alt a-i">🖥️ SSC CGL official CBT ka exact replica — same layout, timer, negative marking, section lock.</div>
+  <div class="g2">
+    ${[{n:'SSC CGL Full Mock #5 (AI Generated)',type:'AI Generated',col:'b',note:'Fresh — not attempted yet'},
+       {n:'SSC CGL 2024 Official Paper (PYP)',type:'Previous Year',col:'p',note:'Exact exam paper — attempted: No'},
+       {n:'Sunday CBT Simulation (Weekly)',type:'Scheduled',col:'g',note:'Next: Sunday 22 March, 10:00 AM'},
+       {n:'SSC CGL 2023 Official Paper (PYP)',type:'Previous Year',col:'p',note:'Score: 64/100 — attempted Mar 14'},
+    ].map(t=>`<div class="card"><div class="cb">
+      <span class="bdg ${t.col}" style="margin-bottom:9px;display:inline-block">${t.type}</span>
+      <div style="font-size:14px;font-weight:800;margin-bottom:4px">${t.n}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:11px">📝 100 Qs · ⏱ 60 min · -0.5 marking<br>${t.note}</div>
+      <button class="btn btn-br" style="width:100%" onclick="startTest('${t.n}')">▶ Start CBT</button>
+    </div></div>`).join('')}
+  </div>
+</div>
+<div id="t4" class="tc">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:800">All Attempts (${D.tests.length})</div>
+    <button class="btn btn-gh" onclick="showModal('dlAll')">📥 Download All PDFs</button>
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <div style="padding:0">
+    <table>
+      <tr><th>Test</th><th>Date</th><th>Score</th><th>Rank</th><th>Analysis</th><th>Download</th></tr>
+      ${D.tests.map(t=>`<tr>
+        <td style="font-weight:700;font-size:11px">${t.name}</td>
+        <td style="font-size:11px;color:var(--muted)">${t.date}</td>
+        <td><span class="bdg ${t.score/t.total>=.36?'g':'o'}">${t.score}/${t.total}</span></td>
+        <td style="font-size:11px">#${t.rank.toLocaleString()}</td>
+        <td><button class="btn btn-xs btn-br" onclick="showTestResult('${t.id}')">📊 View</button></td>
+        <td><button class="btn btn-xs btn-gh" onclick="showModal('dlTest','${t.name}')">📥 PDF</button></td>
+      </tr>`).join('')}
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="ch"><h3>🚩 My Flagged Questions</h3><span class="bdg o">${D.flags.length} flags</span></div>
+    <div class="cb" style="padding:0">
+    <table>
+      <tr><th>Question</th><th>Flagged</th><th>Reason</th><th>Status</th><th>View</th></tr>
+      ${D.flags.map(f=>`<tr>
+        <td style="font-weight:600;font-size:11px">${f.q}</td>
+        <td style="font-size:11px">${f.flagged}</td>
+        <td style="font-size:11px">${f.reason}</td>
+        <td><span class="bdg ${f.status==='resolved'?'g':'o'}">${f.status==='resolved'?'✅ Resolved':'⏳ Pending'}</span></td>
+        <td><button class="btn btn-xs ${f.status==='resolved'?'btn-br':'btn-gh'}" onclick="showModal('flagDetail','${f.id}')">${f.status==='resolved'?'View Resolution':'Awaiting'}</button></td>
+      </tr>`).join('')}
+    </table></div>
+  </div>
+</div>`,
+
+/* PYP */
+pyp:()=>`
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+  <div style="font-size:13px;font-weight:800">Previous Year Papers</div>
+  <button class="btn btn-br" onclick="showModal('dlAllPYP')">📥 Download All PDFs</button>
+</div>
+<div class="tabs">
+  <div class="tab on" onclick="swTab(this,'py1')">SSC CGL</div>
+  <div class="tab" onclick="swTab(this,'py2')">SSC CHSL</div>
+  <div class="tab" onclick="swTab(this,'py3')">Railways NTPC</div>
+</div>
+<div id="py1" class="tc on">
+  <div class="card"><div style="padding:0"><table>
+    <tr><th>Paper</th><th>Year</th><th>Qs</th><th>Your Score</th><th>Attempted</th><th>Actions</th></tr>
+    ${[{y:2024,s:null},{y:2023,s:'71/100'},{y:2022,s:'64/100'},{y:2021,s:'68/100'},{y:2020,s:null},{y:2019,s:null}].map(p=>`<tr>
+      <td style="font-weight:700">SSC CGL Tier-1</td><td>${p.y}</td><td>100</td>
+      <td>${p.s?`<span class="bdg ${parseInt(p.s)>=70?'g':'o'}">${p.s}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
+      <td><span class="bdg ${p.s?'g':'gr'}">${p.s?'Done':'Not Done'}</span></td>
+      <td style="display:flex;gap:5px"><button class="btn btn-xs btn-br" onclick="startTest('PYP CGL ${p.y}')">▶ Attempt</button><button class="btn btn-xs btn-gh" onclick="showModal('dlPYP','SSC CGL ${p.y}')">📥 PDF</button></td>
+    </tr>`).join('')}
+  </table></div></div>
+</div>
+<div id="py2" class="tc"><div class="card"><div class="cb">
+  ${[2024,2023,2022,2021,2020].map(y=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)">
+    <div><div style="font-weight:700">SSC CHSL Tier-1 ${y}</div><div style="font-size:10px;color:var(--muted)">100 questions · 60 min</div></div>
+    <div style="display:flex;gap:5px"><button class="btn btn-xs btn-br" onclick="startTest('CHSL ${y}')">▶ Start</button><button class="btn btn-xs btn-gh" onclick="showModal('dlPYP','CHSL ${y}')">📥 PDF</button></div>
+  </div>`).join('')}
+</div></div></div>
+<div id="py3" class="tc"><div class="card"><div class="cb">
+  ${[2024,2023,2022,2021].map(y=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)">
+    <div><div style="font-weight:700">RRB NTPC CBT-1 ${y}</div><div style="font-size:10px;color:var(--muted)">100 questions · 90 min</div></div>
+    <div style="display:flex;gap:5px"><button class="btn btn-xs btn-br" onclick="startTest('NTPC ${y}')">▶ Start</button><button class="btn btn-xs btn-gh" onclick="showModal('dlPYP','NTPC ${y}')">📥 PDF</button></div>
+  </div>`).join('')}
+</div></div></div>`,
+
+/* CURRENT AFFAIRS */
+ca:()=>`
+<div class="tabs">
+  <div class="tab on" onclick="swTab(this,'ca1');initCA()">Aaj (Today)</div>
+  <div class="tab" onclick="swTab(this,'ca2');initCA()">Quiz</div>
+  <div class="tab" onclick="swTab(this,'ca3')">Weekly Digest</div>
+  <div class="tab" onclick="swTab(this,'ca4')">Monthly</div>
+</div>
+<div id="ca1" class="tc on">
+  <div class="alt a-i">📌 Ye 8 facts aaj ke exam-relevant current affairs hain — 2-3 minute mein padho.</div>
+  ${[{cat:'National 🇮🇳',items:['India ne BRICS Plus mein naye members ke saath economic partnership sign ki.','PM Modi ne "One Nation One Subscription" scheme expand ki — 6500+ journals free access.','India ka manufacturing PMI March 2026 mein 57.4 — 14-month high.']},
+     {cat:'International 🌍',items:['India-US trade deal mein tech aur pharma ke liye special provisions agree hue.','UN Security Council mein India ki temporary seat ke liye lobbying tej.']},
+     {cat:'Economy 💰',items:['RBI ne repo rate 6.25% par stable rakha — 4th consecutive meeting.','India UPI transactions February 2026 mein 16 billion ke paar.']},
+     {cat:'Sci & Tech 🔬',items:['ISRO ne NISAR satellite (NASA-ISRO joint) launch date June 2026 announce ki.']},
+  ].map(c=>`<div class="card" style="margin-bottom:11px"><div class="ch"><h3>${c.cat}</h3></div><div class="cb" style="padding:11px">
+    ${c.items.map(i=>`<div style="font-size:12px;padding:7px 0;border-bottom:1px solid var(--border);display:flex;gap:7px"><span style="color:var(--accent);flex-shrink:0">•</span>${i}</div>`).join('')}
+  </div></div>`).join('')}
+</div>
+<div id="ca2" class="tc on" style="display:none">
+  <div id="ca-quiz-c">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px">
+      <div><div style="font-size:15px;font-weight:800">Current Affairs Quiz — 20 March 2026</div><div style="font-size:11px;color:var(--muted)">5 Questions · 5 Minutes</div></div>
+      <div id="ca-timer" style="font-size:20px;font-weight:900;color:var(--brand)">5:00</div>
+    </div>
+    <div id="ca-qs"></div>
+    <button class="btn btn-br" style="width:100%;padding:12px;font-size:13px;margin-top:7px" onclick="submitCA()">✅ Submit Quiz</button>
+  </div>
+</div>
+<div id="ca3" class="tc">
+  <div class="card"><div class="ch"><h3>March 2026 — Week 3 Digest</h3><button class="btn btn-sm btn-gh" onclick="showModal('dlCA')">📥 Download PDF</button></div>
+  <div class="cb">
+    ${[['National 🇮🇳',['India-Japan semiconductor deal signed','Budget 2026 — Rs 12L tax exemption','UPI crosses 16 billion transactions/month']],
+       ['International 🌍',['ICC Champions Trophy 2026 in Pakistan','India-US tech partnership renewed']],
+       ['Economy 💰',['RBI repo: 6.25% stable','Forex reserve: $650B+','Manufacturing PMI 14-month high']],
+       ['Sports 🏆',['Neeraj Chopra — Diamond League gold','India beat Australia 3-1 in Tests']],
+    ].map(([cat,items])=>`<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:800;color:var(--brand);letter-spacing:.5px;text-transform:uppercase;margin-bottom:7px">${cat}</div>${items.map(i=>`<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)">${i}</div>`).join('')}</div>`).join('')}
+  </div></div>
+</div>
+<div id="ca4" class="tc">
+  <div class="card"><div class="ch"><h3>Monthly Compilation — March 2026</h3><button class="btn btn-br btn-sm" onclick="showModal('dlCA')">📥 Full PDF</button></div>
+  <div class="cb"><div class="alt a-s">220 key current affairs points compiled. Exam-relevant, concise Hindi-English format.</div>
+  <div style="font-size:12px;color:var(--muted)">Categories: National · International · Economy · Science & Tech · Sports · Awards · Appointments · Govt. Schemes · Environment</div>
+  </div></div>
+</div>`,
+
+/* RESULTS */
+results:()=>`
+<div class="sr">
+  <div class="sc"><div class="sc-i">📝</div><div class="sc-v">${D.tests.length}</div><div class="sc-l">Tests Given</div></div>
+  <div class="sc"><div class="sc-i">📈</div><div class="sc-v">+12</div><div class="sc-l">Score Improved (30d)</div><div class="sc-c up">▲ Great</div></div>
+  <div class="sc"><div class="sc-i">🏆</div><div class="sc-v">#842</div><div class="sc-l">Best Rank</div></div>
+  <div class="sc"><div class="sc-i">✅</div><div class="sc-v">74%</div><div class="sc-l">Accuracy (this week)</div><div class="sc-c up">▲ +3%</div></div>
+</div>
+<div class="card" style="margin-bottom:14px">
+  <div class="ch"><h3>📊 Latest: SSC CGL Full Mock #4</h3><button class="btn btn-sm btn-gh" onclick="showModal('dlTest','SSC CGL Full Mock #4')">📥 PDF</button></div>
+  <div class="cb">
+    <div class="rs-big">
+      <div style="font-size:11px;opacity:.5;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">20 March 2026 · SSC CGL Full Mock #4</div>
+      <div class="rs-val">74<span style="font-size:22px;opacity:.4">/200</span></div>
+      <div class="rs-dets">
+        <div><div class="rs-d-v" style="color:#10b981">74</div><div style="opacity:.5">Correct</div></div>
+        <div><div class="rs-d-v" style="color:#ef4444">22</div><div style="opacity:.5">Wrong (-11)</div></div>
+        <div><div class="rs-d-v" style="color:#f59e0b">4</div><div style="opacity:.5">Skipped</div></div>
+        <div><div class="rs-d-v">#842</div><div style="opacity:.5">All India</div></div>
+      </div>
+    </div>
+    <div class="g2">
+      ${Object.entries(D.tests[0].secs).map(([sub,d])=>{const pct=Math.round(d.s/d.t*100);return `<div style="padding:10px;background:var(--bg);border-radius:9px"><div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px"><strong>${sub}</strong><span style="font-weight:800">${d.s}/${d.t}</span></div><div class="pb h8"><div class="pf ${pct>=60?'g-f':pct>=40?'a-f':'r-f'}" style="width:${pct}%"></div></div><div style="font-size:10px;color:var(--muted);margin-top:2px">${pct}%</div></div>`;}).join('')}
+    </div>
+    <div class="ins-c" style="margin-top:12px;margin-bottom:0">
+      <div class="ins-tag">🤖 AI Feedback</div>
+      <div class="ins-txt">Reasoning strong (56%) — keep it up. English sirf 28% — ye score drag kar raha hai. Kal English vocabulary pe focus karo pehle. Negative marking mein 11 marks waste hue — attempt vs skip practice karo.</div>
+    </div>
+    <button class="btn btn-br btn-sm" style="margin-top:10px" onclick="showModal('questionReview')">🔍 Question-by-Question Review</button>
+  </div>
+</div>
+<div class="card">
+  <div class="ch"><h3>📜 All Results History</h3></div>
+  <div style="padding:0"><table>
+    <tr><th>Test</th><th>Date</th><th>Score</th><th>Rank</th><th>vs Previous</th><th>Actions</th></tr>
+    ${D.tests.map((t,i)=>{const prev=D.tests[i+1];const imp=prev&&t.score>prev.score?`<span style="color:var(--green);font-size:10px">▲ +${t.score-prev.score}</span>`:prev&&t.score<prev.score?`<span style="color:var(--red);font-size:10px">▼ ${t.score-prev.score}</span>`:'—';
+    return `<tr>
+      <td style="font-weight:700;font-size:11px">${t.name}</td>
+      <td style="font-size:11px;color:var(--muted)">${t.date}</td>
+      <td><span class="bdg ${t.score/t.total>=.36?'g':'o'}">${t.score}/${t.total}</span></td>
+      <td style="font-size:11px">#${t.rank.toLocaleString()}</td>
+      <td>${imp}</td>
+      <td><button class="btn btn-xs btn-br" onclick="showTestResult('${t.id}')">View</button> <button class="btn btn-xs btn-gh" onclick="showModal('dlTest','${t.name}')">📥</button></td>
+    </tr>`;}).join('')}
+  </table></div>
+</div>`,
+
+/* ANALYTICS */
+analytics:()=>`
+<div class="sr">
+  <div class="sc"><div class="sc-i">📊</div><div class="sc-v">62</div><div class="sc-l">Current Readiness</div><div class="sc-c up">▲ +14 in 90d</div></div>
+  <div class="sc"><div class="sc-i">⚡</div><div class="sc-v">62%</div><div class="sc-l">Accuracy</div><div class="sc-c up">▲ +3% this week</div></div>
+  <div class="sc"><div class="sc-i">⏱️</div><div class="sc-v">19s</div><div class="sc-l">Avg Speed/Q</div><div class="sc-c up">▲ faster</div></div>
+  <div class="sc"><div class="sc-i">📝</div><div class="sc-v">1,340</div><div class="sc-l">Questions Done</div></div>
+</div>
+<div class="tabs">
+  <div class="tab on" onclick="swTab(this,'an1')">📈 Performance</div>
+  <div class="tab" onclick="swTab(this,'an2')">🧭 Study Habits</div>
+  <div class="tab" onclick="swTab(this,'an3')">💙 Mood & Progress</div>
+  <div class="tab" onclick="swTab(this,'an4')">🗓️ Weekly Report</div>
+</div>
+<div id="an1" class="tc on">
+  <div class="g2">
+    <div class="card"><div class="ch"><h3>📈 90-Day Readiness Trend</h3></div><div class="cb"><canvas id="ch-trend" height="180"></canvas></div></div>
+    <div class="card"><div class="ch"><h3>📊 Subject Accuracy</h3></div><div class="cb"><canvas id="ch-sub" height="180"></canvas></div></div>
+  </div>
+  <div class="g2">
+    <div class="card"><div class="ch"><h3>⚡ Speed vs Accuracy Matrix</h3></div><div class="cb" style="padding:11px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:11px">
+        <div style="background:#d1fae5;border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;font-weight:800;color:#065f46;margin-bottom:3px">✅ STRONG</div><div style="font-size:10px;color:#065f46">Fast + Accurate<br>Reasoning, GK</div></div>
+        <div style="background:#fef3c7;border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;font-weight:800;color:#92400e;margin-bottom:3px">⚡ SPEED DRILL</div><div style="font-size:10px;color:#92400e">Accurate but Slow<br>Quant: Percentage</div></div>
+        <div style="background:#fee2e2;border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;font-weight:800;color:#991b1b;margin-bottom:3px">⚠️ DANGER</div><div style="font-size:10px;color:#991b1b">Slow + Wrong<br>English: Vocab</div></div>
+        <div style="background:#ede9fe;border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;font-weight:800;color:#5b21b6;margin-bottom:3px">📖 CONCEPT</div><div style="font-size:10px;color:#5b21b6">Fast but Wrong<br>Trig: Formulas</div></div>
+      </div>
+      <table>
+        <tr><th>Topic</th><th>Accuracy</th><th>Speed</th><th>Zone</th></tr>
+        ${[['Percentage','78%','24s','speed'],['Quadratic Eq','38%','42s','danger'],['Trigonometry','44%','18s','concept'],['Analogy','82%','12s','strong'],['Vocabulary','36%','32s','danger'],['Coding-Decoding','88%','14s','strong']].map(([t,a,sp,z])=>`<tr>
+          <td>${t}</td><td>${a}</td><td style="color:${z==='speed'||z==='danger'?'var(--red)':'var(--green)'};font-weight:700">${sp}</td>
+          <td><span class="bdg ${z==='strong'?'g':z==='speed'?'o':z==='danger'?'r':'p'}">${z}</span></td>
+        </tr>`).join('')}
+      </table>
+    </div></div>
+    <div class="card"><div class="ch"><h3>🗓️ 30-Day Study Consistency</h3></div><div class="cb">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:7px">
+        ${['S','M','T','W','T','F','S'].map(d=>`<div style="text-align:center;font-size:9px;color:var(--muted);font-weight:700">${d}</div>`).join('')}
+        ${Array.from({length:31},(_,i)=>{
+          const done=[1,2,3,5,6,8,9,10,12,13,15,16,17,18,19,20].includes(i);
+          const part=[4,7,11,14].includes(i);
+          const empty=i===0||i>30;
+          if(empty)return `<div></div>`;
+          return `<div style="aspect-ratio:1;border-radius:3px;background:${done?'#10b981':part?'#fcd34d':'#e2e8f0'};cursor:pointer" title="Day ${i}"></div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:10px;font-size:10px;color:var(--muted)"><span>🟩 Full</span><span>🟨 Partial</span><span>⬜ Missed</span></div>
+    </div></div>
+  </div>
+  <div class="g2">
+    <div class="card"><div class="ch"><h3>🔴 Top Weak Topics</h3></div><div class="cb">
+      ${[{t:'English Vocabulary',pct:36,tr:'flat'},{t:'Quadratic Equations',pct:38,tr:'worse'},{t:'GK: Schemes',pct:42,tr:'improving'}].map(w=>`<div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:700">${w.t}</span><span class="bdg ${w.pct<40?'r':'o'}">${w.pct}%</span></div>
+        <div class="pb h8"><div class="pf r-f" style="width:${w.pct}%"></div></div>
+        <div style="font-size:10px;margin-top:3px;color:${w.tr==='improving'?'var(--green)':w.tr==='flat'?'var(--muted)':'var(--red)'}">${w.tr==='improving'?'▲ Improving':w.tr==='flat'?'→ Flat':'▼ Getting worse'}</div>
+      </div>`).join('')}
+    </div></div>
+    <div class="card"><div class="ch"><h3>🟢 Top Strong Topics</h3></div><div class="cb">
+      ${[{t:'Coding-Decoding',pct:88},{t:'Analogy',pct:82},{t:'Profit & Loss',pct:78}].map(s=>`<div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:700">${s.t}</span><span class="bdg g">${s.pct}%</span></div>
+        <div class="pb h8"><div class="pf g-f" style="width:${s.pct}%"></div></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">▲ Maintain with 1 test/week</div>
+      </div>`).join('')}
+    </div></div>
+  </div>
+</div>
+<div id="an2" class="tc">
+  <div class="g2">
+    <div class="card"><div class="ch"><h3>🔁 Skip Pattern Analysis</h3></div><div class="cb">
+      ${[{r:'Too Difficult',n:D.skipReasons.tooD,pct:40,col:'r-f'},
+         {r:'Not Enough Time',n:D.skipReasons.noTime,pct:20,col:'o-f'},
+         {r:'Feeling Low',n:D.skipReasons.feeling,pct:30,col:'p-f'},
+         {r:'Already Knew It',n:D.skipReasons.knew,pct:10,col:'g-f'},
+      ].map(s=>`<div style="margin-bottom:13px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="font-weight:700">${s.r}</span><span style="color:var(--muted)">${s.n} skips</span></div>
+        <div class="pb h8"><div class="pf ${s.col}" style="width:${s.pct}%"></div></div>
+      </div>`).join('')}
+      <div class="ins-c" style="margin-top:4px;margin-bottom:0">
+        <div class="ins-tag">🤖 Insight</div>
+        <div class="ins-txt" style="font-size:12px">"Too Difficult" skips increased this week. AI ne Algebra tasks chhotey chunks mein todh diye hain.</div>
+      </div>
+    </div></div>
+    <div class="card"><div class="ch"><h3>⏰ Daily Rhythm Heatmap</h3></div><div class="cb">
+      <table style="font-size:10px">
+        <tr><th>Time</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
+        ${[['6-8AM','full','full','part','full','full'],['8-10AM','part','full','none','part','full'],['12-2PM','none','none','none','none','none'],['6-8PM','full','part','full','full','none'],['8-11PM','full','full','part','full','none']].map(([t,...days])=>`<tr>
+          <td style="font-weight:700">${t}</td>
+          ${days.map(d=>`<td style="text-align:center"><div style="width:22px;height:22px;border-radius:4px;margin:auto;background:${d==='full'?'#10b981':d==='part'?'#fcd34d':'#e2e8f0'}"></div></td>`).join('')}
+        </tr>`).join('')}
+      </table>
+      <div class="ins-c" style="margin-top:11px;margin-bottom:0"><div class="ins-tag">📊 Insight</div><div class="ins-txt" style="font-size:12px">You're 3× more likely to complete tasks started before 8AM. Evening (8-11PM) also strong.</div></div>
+    </div></div>
+  </div>
+</div>
+<div id="an3" class="tc">
+  <div class="card" style="margin-bottom:13px">
+    <div class="ch"><h3>💙 Mood ↔ Task Completion Pattern</h3></div>
+    <div class="cb">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+        ${[{m:'😊 Calm',p:'85%',col:'#059669'},
+           {m:'😐 Okay',p:'65%',col:'#2563eb'},
+           {m:'😟 Stressed',p:'45%',col:'#ea580c'},
+           {m:'😰 Very Stressed',p:'30%',col:'#dc2626'},
+           {m:'😴 Tired',p:'40%',col:'#7c3aed'},
+        ].map(r=>`<div style="text-align:center;flex:1;min-width:60px"><div style="font-size:20px">${r.m.split(' ')[0]}</div><div style="font-size:18px;font-weight:900;margin:4px 0;color:${r.col}">${r.p}</div><div style="font-size:10px;color:#64748b">${r.m.split(' ').slice(1).join(' ')}</div></div>`).join('')}
+      </div>
+      <div class="ins-c" style="margin-bottom:0"><div class="ins-tag">💙 AI Insight</div><div class="ins-txt" style="font-size:12px">Jab tum Calm hote ho, 85% tasks complete karte ho vs 30% when Very Stressed. Low-energy days pe apna favorite subject pehle karo.</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ch"><h3>📅 Last 7 Days Mood Log</h3></div>
+    <div class="cb" style="padding:0"><table>
+      <tr><th>Date</th><th>Mood</th><th>Tasks Done</th><th>Plan Adjustment</th></tr>
+      ${D.moodHistory.map(m=>`<tr>
+        <td>${m.date}</td>
+        <td>${m.mood==='Calm & Focused'?'😊 Calm':m.mood==='Normal / Okay'?'😐 Okay':m.mood==='Stressed'?'😟 Stressed':'😰 Very Stressed'} ${m.mood}</td>
+        <td><div class="pb h6" style="width:80px"><div class="pf ${m.comp>=70?'g-f':m.comp>=45?'a-f':'r-f'}" style="width:${m.comp}%"></div></div> ${m.comp}%</td>
+        <td style="font-size:10px;color:var(--muted)">${m.mood.includes('Stressed')?'Plan lightened':'No change'}</td>
+      </tr>`).join('')}
+    </table></div>
+  </div>
+</div>
+<div id="an4" class="tc">
+  <div class="card">
+    <div class="ch"><h3>📬 Weekly Habit Report — Mar 14-20, 2026</h3><button class="btn btn-sm btn-gh" onclick="showModal('shareWinCard')">🏆 Share Win Card</button></div>
+    <div class="cb">
+      <div class="alt a-s">✅ 80% tasks started within 15 min of scheduled time.</div>
+      <div class="alt a-w">⚠️ 3 tasks skipped due to "Not enough time" → AI moved evening tasks to morning.</div>
+      <div class="alt a-p">📉 Algebra reviews completed 2× but micro-quiz scores still low → Try visual learning method.</div>
+      <div class="alt a-s">🎯 Small win: Quant accuracy improved 8% this week!</div>
+      <div class="g2" style="margin-top:14px">
+        <button class="btn btn-br" style="width:100%;padding:11px" onclick="showModal('applyAdj')">✅ Apply These Adjustments</button>
+        <button class="btn btn-gh" style="width:100%;padding:11px" onclick="showModal('shareWinCard')">🏆 Share Progress</button>
+      </div>
+    </div>
+  </div>
+</div>`,
+
+/* AI COACH */
+coach:()=>`
+<div class="chat-w">
+  <div class="chat-hdr">
+    <div class="c-av">🤖</div>
+    <div class="chat-info"><h3>EXAMBHAI Coach</h3><p>Sarvam 30B · Full profile access · Hinglish/English</p></div>
+    <div style="margin-left:auto;font-size:10px;opacity:.4;text-align:right">Tera full data<br>AI ke paas hai</div>
+  </div>
+  <div class="qbtns">
+    ${['Mera score kaisa hai?','Aaj kya padhun?','Meri weakness kya hai?','CGL clear karunga?','English kaise improve karu?','Aaj ka plan explain karo','Algebra kyun weak hai?'].map(q=>`<div class="qb" onclick="cQ('${q}')">${q}</div>`).join('')}
+  </div>
+  <div class="chat-msgs" id="cmsgs">
+    <div class="msg-r bot"><div class="m-av">🤖</div><div>
+      <div class="msg-b">Namaste Rahul! 👋 Main EXAMBHAI Coach hoon — tera personal AI prep guide.<br><br>Mujhe teri poori SSC CGL journey pata hai — readiness score <strong>62/100</strong>, weak topics, mood patterns, test history, sab kuch. Toh main generic advice nahi dunga — sirf teri situation ke hisaab se baat karenge.<br><br>Kya poochna hai? 🎯</div>
+      <div class="msg-t">Abhi</div>
+    </div></div>
+  </div>
+  <div class="chat-inp-area">
+    <input class="c-inp" id="cinp" placeholder="Kuch bhi poochho — Hindi ya English mein..." onkeypress="if(event.key==='Enter')sendC()">
+    <button class="c-send" onclick="sendC()">➤</button>
+  </div>
+</div>`,
+
+/* PROFILE */
+profile:()=>`
+<div class="g2">
+  <div class="card"><div class="cb" style="text-align:center;padding:22px">
+    <div style="width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--orange));display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;margin:0 auto 10px">R</div>
+    <div style="font-size:17px;font-weight:900;margin-bottom:2px">Rahul Kumar</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:11px">SSC CGL 2026 · Doosra Attempt · UP</div>
+    <div style="display:flex;justify-content:center;gap:14px;margin-bottom:14px">
+      <div style="text-align:center"><div style="font-size:19px;font-weight:900;color:var(--accent)">62</div><div style="font-size:10px;color:var(--muted)">Readiness</div></div>
+      <div style="text-align:center"><div style="font-size:19px;font-weight:900;color:var(--green)">8</div><div style="font-size:10px;color:var(--muted)">Day Streak</div></div>
+      <div style="text-align:center"><div style="font-size:19px;font-weight:900;color:var(--blue)">${D.tests.length}</div><div style="font-size:10px;color:var(--muted)">Tests</div></div>
+    </div>
+    <div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin-bottom:14px">
+      <span class="bdg o">🏆 8-Day Streak</span><span class="bdg b">📝 6 Tests Done</span><span class="bdg g">📈 Improving</span>
+    </div>
+    <button class="btn btn-br btn-sm" style="width:100%;margin-bottom:6px" onclick="showModal('shareWinCard')">🏆 Share Win Card</button>
+    <button class="btn btn-gh btn-sm" style="width:100%" onclick="showModal('dataExport')">📊 Export My Data</button>
+  </div></div>
+  <div class="card"><div class="ch"><h3>📚 Syllabus Completion</h3></div>
+    <div class="cb" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+      <div style="position:relative;flex-shrink:0">
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r="46" fill="none" stroke="#e2e8f0" stroke-width="9"/>
+          <circle cx="55" cy="55" r="46" fill="none" stroke="#f59e0b" stroke-width="9" stroke-dasharray="289" stroke-dashoffset="${289*(1-.58)}" stroke-linecap="round" transform="rotate(-90 55 55)"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:20px;font-weight:900">58%</div><div style="font-size:9px;color:var(--muted)">done</div>
+        </div>
+      </div>
+      <div style="flex:1">
+        ${Object.entries(D.syllabus).map(([s,d])=>{const p=Math.round(d.done/d.total*100);return `<div class="syl-b"><div class="syl-r"><span>${s}</span><span style="color:var(--muted)">${d.done}/${d.total}</span></div><div class="pb h6"><div class="pf ${p>=70?'g-f':p>=50?'a-f':'r-f'}" style="width:${p}%"></div></div></div>`;}).join('')}
+      </div>
+    </div>
+  </div>
+</div>
+<div class="g2">
+  <div class="card"><div class="ch"><h3>📈 Readiness Journey</h3></div><div class="cb"><canvas id="ch-profile" height="150"></canvas></div></div>
+  <div class="card"><div class="ch"><h3>📋 Last 5 Results</h3></div><div class="cb" style="padding:0"><table>
+    <tr><th>Test</th><th>Score</th><th>Rank</th></tr>
+    ${D.tests.slice(0,5).map(t=>`<tr><td style="font-size:11px;font-weight:600">${t.name.substring(0,24)}...</td><td><span class="bdg ${t.score/t.total>=.36?'g':'o'}">${t.score}/${t.total}</span></td><td style="font-size:11px">#${t.rank.toLocaleString()}</td></tr>`).join('')}
+  </table></div></div>
+</div>
+<div class="card" style="margin-top:14px">
+  <div class="ch"><h3>⚙️ Settings</h3></div>
+  <div class="cb">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="fg"><label>Exam Target</label><select class="fc"><option selected>SSC CGL 2026</option><option>SSC CHSL 2026</option><option>Railways NTPC 2026</option></select></div>
+      <div class="fg"><label>Exam Date</label><input type="date" class="fc" value="2026-10-12"></div>
+      <div class="fg"><label>Daily Study Hours</label><select class="fc"><option>2 hrs</option><option selected>3-4 hrs</option><option>5-6 hrs</option></select></div>
+      <div class="fg"><label>Language</label><select class="fc"><option selected>Hinglish (Default)</option><option>English Only</option><option>Hindi Only</option></select></div>
+      <div class="fg"><label>Mood Check-ins</label><select class="fc"><option selected>Twice daily (Morning + Evening)</option><option>Morning only</option><option>Off</option></select></div>
+      <div class="fg"><label>Data Saver Mode</label><select class="fc"><option>Off</option><option selected>On (60% less data)</option></select></div>
+    </div>
+    <button class="btn btn-br" onclick="showModal('settingsSaved')">💾 Save Settings</button>
+  </div>
+</div>`,
+
+/* BILLING */
+billing:()=>`
+<div class="alt a-s" style="margin-bottom:18px">✅ Currently on Free Plan — 7-day free trial of Premium active. 3 days remaining.</div>
+<div class="g3" style="margin-bottom:18px">
+  <div class="plan-c">
+    <div class="plan-name">Free</div>
+    <div class="plan-price">₹0<span>/month</span></div>
+    <div style="border-top:1px solid var(--border);padding-top:11px;margin-bottom:14px">
+      ${['3 mock tests/month','Daily challenge (10 Qs)','Basic planner','5 CA questions/day','10 AI messages/day','Mood check-in + basic adapt.','Vacancy alerts'].map(f=>`<div class="plan-f">✅ ${f}</div>`).join('')}
+      ${['Error Journal','Speed drills','Full analytics + habits','PDF downloads','Unlimited AI coach','Micro-quiz verification','Behavioral insights'].map(f=>`<div class="plan-f" style="color:#cbd5e1;text-decoration:line-through">✗ ${f}</div>`).join('')}
+    </div>
+    <button class="btn btn-gh" style="width:100%">Current Plan</button>
+  </div>
+  <div class="plan-c pop">
+    <div class="plan-badge">Most Popular</div>
+    <div class="plan-name">Premium</div>
+    <div class="plan-price">₹99<span>/month</span></div>
+    <div style="border-top:1px solid var(--border);padding-top:11px;margin-bottom:14px">
+      ${['Unlimited mock tests','Full adaptive daily planner','Error Journal + spaced rep.','Speed & accuracy analysis','Full analytics + habits','Behavioral insights','PDF downloads (Hindi expl.)','Unlimited AI Coach (Hinglish)','Micro-quiz task validation','CBT full simulation','Flag question + priority review'].map(f=>`<div class="plan-f">✅ ${f}</div>`).join('')}
+    </div>
+    <button class="btn btn-ac" style="width:100%;padding:10px" onclick="showModal('upgrade','premium')">Upgrade ₹99/month</button>
+  </div>
+  <div class="plan-c">
+    <div class="plan-name">Exam Pack</div>
+    <div class="plan-price">₹399<span>/6 months</span></div>
+    <div style="background:#ecfdf5;border-radius:7px;padding:7px;text-align:center;margin-bottom:11px;font-size:11px;color:#065f46;font-weight:700">Saves ₹200 vs monthly</div>
+    <div style="border-top:1px solid var(--border);padding-top:11px;margin-bottom:14px">
+      ${['Everything in Premium','6 full months access','Best for one exam cycle','Early vacancy alerts','One-tap plan migration','Win Card parent share'].map(f=>`<div class="plan-f">✅ ${f}</div>`).join('')}
+    </div>
+    <button class="btn btn-br" style="width:100%;padding:10px" onclick="showModal('upgrade','exam-pack')">Get Exam Pack ₹399</button>
+  </div>
+</div>
+<div class="card">
+  <div class="ch"><h3>🛡️ Trust-First Guarantees</h3></div>
+  <div class="cb">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      ${['🎯 7-day outcome guarantee — feel clearer or full refund','🚫 No surprise auto-renewal — manual renewal only','⏰ Renewal alert 3 days before with exact amount','👨‍👩‍👦 Parent Win Card share to show progress','📴 Offline payment support (UPI QR for poor internet)','💳 Razorpay: UPI, debit/credit card, net banking, EMI'].map(g=>`<div style="background:var(--bg);border-radius:8px;padding:10px;font-size:12px;">${g}</div>`).join('')}
+    </div>
+  </div>
+</div>`,
+
+/* VACANCY */
+vacancy:()=>`
+<div class="alt a-s" style="margin-bottom:14px">🆕 2 nayi vacancies aaj release hui — SSC CGL 2026 aur CHSL 2026.</div>
+${D.vacancies.map(v=>`<div class="vac">
+  <div class="vac-ic">${v.ic}</div>
+  <div style="flex:1">
+    <div style="font-size:14px;font-weight:800;margin-bottom:4px">${v.title}${v.isNew?'<span class="bdg g" style="margin-left:7px">🆕 New</span>':''}</div>
+    <div style="font-size:11px;color:var(--muted);display:flex;gap:11px;flex-wrap:wrap;margin-bottom:9px">
+      <span>📋 ${v.posts} Posts</span><span>🏛️ ${v.dept}</span><span>📅 Last: ${v.last}</span><span>📝 Exam: ${v.exam}</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${v.isNew?`<button class="btn btn-br btn-sm" onclick="showModal('planMigration','${v.title}')">🎯 Create Study Plan</button><button class="btn btn-sm btn-gh">Apply →</button><button class="btn btn-sm btn-gh">Save</button>`:
+      `<button class="btn btn-sm btn-gh">View Details</button><button class="btn btn-sm btn-gh">${v.last==='Result Declared'?'View Result →':'Set Reminder'}</button>`}
+    </div>
+  </div>
+</div>`).join('')}`,
+};
+
+/* ═══════ TASK RENDERING ═══════ */
+function renderTasks(withActions=true){
+  return D.tasks.map((t,i)=>{
+    const typeColors={study:'#2563eb',quiz:'#7c3aed',mock:'#db2777',speed:'#ea580c'};
+    const typeBadge={study:'📖 Study',quiz:'🧠 Micro-quiz',mock:'📝 Mock Test',speed:'⚡ Speed Drill'};
+    return `<div class="tc-wrap ${t.done?'done':t.skipped?'skipped':''}" id="tc-${i}">
+      <div class="tc-bar" style="background:${t.color}"></div>
+      <div class="tc-time">${t.time}</div>
+      <div class="tc-body">
+        <div class="tc-sub" style="color:${t.color}">${t.sub}</div>
+        <div class="tc-topic">${t.topic}</div>
+        <div class="tc-meta">⏱ ${t.dur} · <span class="bdg gr" style="font-size:9px">${typeBadge[t.type]||t.type}</span></div>
+      </div>
+      ${withActions?`<div class="tc-acts">
+        ${t.done?'<span class="bdg g">✅ Done</span>':t.skipped?'<span class="bdg gr">↪ Shifted</span>':`
+          <button class="btn btn-xs btn-gn" onclick="markDone(${i})">✅</button>
+          <button class="btn btn-xs btn-gh" onclick="skipTask(${i})">↪</button>
+          <button class="btn btn-xs btn-br" onclick="startTask(${i})">▶</button>
+        `}
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+let taskRefs={};
+function markDone(i){
+  taskRefs[i]=taskRefs[i]||0;
+  taskRefs[i]++;
+  // Check if done too quickly (simulate)
+  if(taskRefs[i]===1&&!D.tasks[i].done){
+    showModal('quickDone',i);
+    return;
+  }
+  D.tasks[i].done=true;D.tasks[i].skipped=false;
+  refreshTasks();
+}
+function confirmDone(i){D.tasks[i].done=true;D.tasks[i].skipped=false;closeMo();refreshTasks();}
+function skipTask(i){showModal('skipReason',i);}
+function confirmSkip(i){D.tasks[i].skipped=true;D.tasks[i].done=false;closeMo();refreshTasks();}
+function startTask(i){showModal('startTask',i);}
+function refreshTasks(){
+  const el=document.getElementById('task-list');if(el)el.innerHTML=renderTasks(true);
+}
+
+/* ═══════ TEST ENGINE ═══════ */
+function startTest(name){
+  tAns={};tCurr=0;tSecs=1800;
+  document.getElementById('moInner').innerHTML=`
+  <div class="mo-hd"><h3>📝 ${name.substring(0,40)}</h3><button class="mo-x" onclick="clearInterval(tTimer);closeMo()">✕</button></div>
+  <div style="background:var(--brand2);color:#fff;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+    <div style="font-size:11px;opacity:.5">Q <span id="qno">1</span>/${D.testQs.length}</div>
+    <div style="font-size:20px;font-weight:900;color:var(--accent)" id="ttime">30:00</div>
+    <div style="font-size:10px;opacity:.4">-0.5 neg</div>
+  </div>
+  <div class="q-nums" id="qnums">${D.testQs.map((_,i)=>`<div class="qn${i===0?' cur':''}" id="qn${i}" onclick="jQ(${i})">${i+1}</div>`).join('')}</div>
+  <div id="qbody"></div>`;
+  document.getElementById('mo').classList.add('on');
+  startTT();rQ(0);
+}
+function rQ(i){
+  tCurr=i;
+  document.getElementById('qno').textContent=i+1;
+  document.querySelectorAll('.qn').forEach((el,idx)=>{el.className='qn'+(tAns[idx]!==undefined?' ans':'')+(idx===i?' cur':'');});
+  const q=D.testQs[i];
+  document.getElementById('qbody').innerHTML=`
+  <div class="test-q">
+    <div class="q-meta"><span class="bdg b">${q.sub}</span><span class="bdg gr">${q.top}</span><span style="color:var(--muted)">+2 / -0.5</span></div>
+    <div class="q-text">${q.q}</div>
+    ${q.opts.map((o,oi)=>`<div class="opt ${tAns[i]===oi?'sel':''}" onclick="pA(${i},${oi})"><div class="opt-l">${'ABCD'[oi]}</div><span>${o}</span></div>`).join('')}
+    <div class="q-nav">
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-gh btn-sm" onclick="rQ(${Math.max(0,i-1)})" ${i===0?'disabled':''}>← Prev</button>
+        <button class="btn btn-gh btn-sm" onclick="flagQ(${i})">🚩 Flag</button>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-pur" onclick="showModal('askAI',${i})">💬 Ask AI</button>
+        ${i<D.testQs.length-1?`<button class="btn btn-br btn-sm" onclick="rQ(${i+1})">Next →</button>`:`<button class="btn btn-ac btn-sm" onclick="submitTest()">✅ Submit</button>`}
+      </div>
+    </div>
+  </div>`;
+}
+function pA(qi,oi){tAns[qi]=oi;rQ(qi);}
+function jQ(i){rQ(i);}
+function flagQ(i){const el=document.getElementById('qn'+i);if(el)el.classList.toggle('flag');}
+let _tT;
+function startTT(){
+  clearInterval(_tT);
+  _tT=setInterval(()=>{tSecs--;const el=document.getElementById('ttime');if(el){const m=Math.floor(tSecs/60),s=tSecs%60;el.textContent=`${m}:${s.toString().padStart(2,'0')}`;if(tSecs<120)el.style.color='#ef4444';}if(tSecs<=0){clearInterval(_tT);submitTest();}},1000);
+}
+function submitTest(){
+  clearInterval(_tT);
+  let cor=0,wr=0,sk=0;
+  D.testQs.forEach((q,i)=>{if(tAns[i]===undefined)sk++;else if(tAns[i]===q.ans)cor++;else wr++;});
+  const sc=cor*2-wr*.5;
+  document.getElementById('moInner').innerHTML=`
+  <div class="mo-hd"><h3>✅ Test Complete</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+  <div class="rs-big"><div style="font-size:11px;opacity:.5;margin-bottom:3px">Test Score</div>
+    <div class="rs-val">${sc.toFixed(1)}<span style="font-size:20px;opacity:.4">/${D.testQs.length*2}</span></div>
+    <div class="rs-dets"><div><div class="rs-d-v" style="color:#10b981">${cor}</div><div style="opacity:.5">Correct</div></div><div><div class="rs-d-v" style="color:#ef4444">${wr}</div><div style="opacity:.5">Wrong</div></div><div><div class="rs-d-v" style="color:#f59e0b">${sk}</div><div style="opacity:.5">Skipped</div></div></div>
+  </div>
+  <div style="font-size:12px;font-weight:700;margin-bottom:9px">Question Review + AI Explanations:</div>
+  ${D.testQs.map((q,i)=>`<div style="padding:10px 0;border-bottom:1px solid var(--border);font-size:12px">
+    <div style="display:flex;gap:8px;align-items:start">
+      <div style="width:20px;height:20px;border-radius:50%;flex-shrink:0;background:${tAns[i]===q.ans?'#d1fae5':tAns[i]===undefined?'#f1f5f9':'#fee2e2'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:${tAns[i]===q.ans?'#065f46':tAns[i]===undefined?'#94a3b8':'#991b1b'}">${tAns[i]===q.ans?'✓':tAns[i]===undefined?'—':'✗'}</div>
+      <div style="flex:1"><div style="font-weight:600">${q.q.substring(0,50)}...</div>
+      <div style="color:var(--muted);font-size:11px;margin-top:2px">✅ Correct: ${q.opts[q.ans]} · 💡 ${q.expl}</div>
+      ${tAns[i]!==undefined&&tAns[i]!==q.ans?`<button class="btn btn-xs btn-pur" style="margin-top:4px" onclick="showModal('askAIPost',${i})">💬 Ask AI About This</button>`:''}
+      ${tAns[i]!==undefined&&tAns[i]!==q.ans?`<button class="btn btn-xs btn-gh" style="margin-top:4px" onclick="showModal('flagReport',${i})">🚩 Flag This Question</button>`:''}
+      </div>
+    </div>
+  </div>`).join('')}
+  <div class="alt a-i" style="margin-top:11px">🤖 Wrong answers Error Journal mein save ho gaye. Study plan mein in topics ka revision include kiya gaya.</div>
+  <div style="display:flex;gap:7px;margin-top:11px">
+    <button class="btn btn-br" style="flex:1" onclick="closeMo();go('results')">Results →</button>
+    <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Close</button>
+  </div>`;
+}
+
+/* ═══════ CA QUIZ ═══════ */
+function initCA(){
+  const qs=document.getElementById('ca-qs');if(!qs)return;
+  qs.innerHTML=D.caQs.map((q,qi)=>`<div class="test-q" style="margin-bottom:10px">
+    <div class="q-meta"><span class="bdg t">Current Affairs</span><span style="color:var(--muted)">Q${qi+1}</span></div>
+    <div class="q-text">${q.q}</div>
+    ${q.opts.map((o,oi)=>`<div class="opt" id="cq-${qi}-${oi}" onclick="pCA(${qi},${oi})">${o}</div>`).join('')}
+  </div>`).join('');
+  let t=300;clearInterval(caTimerInt);
+  caTimerInt=setInterval(()=>{t--;const el=document.getElementById('ca-timer');if(el){const m=Math.floor(t/60),s=t%60;el.textContent=`${m}:${s.toString().padStart(2,'0')}`;}if(t<=0){clearInterval(caTimerInt);submitCA();}},1000);
+}
+function pCA(qi,oi){
+  caAns[qi]=oi;
+  D.caQs[qi].opts.forEach((_,i)=>{const el=document.getElementById(`cq-${qi}-${i}`);if(el)el.classList.remove('sel');});
+  const el=document.getElementById(`cq-${qi}-${oi}`);if(el)el.classList.add('sel');
+}
+function submitCA(){
+  clearInterval(caTimerInt);let sc=0;
+  D.caQs.forEach((q,qi)=>{
+    if(caAns[qi]===q.ans)sc++;
+    q.opts.forEach((_,oi)=>{const el=document.getElementById(`cq-${qi}-${oi}`);if(!el)return;el.classList.remove('sel');if(oi===q.ans)el.classList.add('ok');else if(caAns[qi]===oi)el.classList.add('ng');});
+    const qdiv=document.getElementById(`cq-${qi}-0`)?.closest('.test-q');
+    if(qdiv&&!qdiv.querySelector('.ca-ex')){const ex=document.createElement('div');ex.className='ca-ex';ex.style.cssText='background:#fffbeb;border-left:3px solid #f59e0b;padding:8px 11px;border-radius:0 7px 7px 0;font-size:11px;margin-top:7px;';ex.innerHTML=`💡 <strong>Explanation:</strong> ${q.expl}`;qdiv.appendChild(ex);}
+  });
+  const cont=document.getElementById('ca-quiz-c');
+  if(cont){const b=document.createElement('div');b.innerHTML=`<div style="background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;border-radius:11px;padding:16px;text-align:center;margin-bottom:12px"><div style="font-size:36px;font-weight:900;color:var(--accent)">${sc}/${D.caQs.length}</div><div style="opacity:.6;font-size:12px">Aaj ka Current Affairs Score</div><div style="font-size:11px;opacity:.45;margin-top:3px">${sc>=4?'Excellent! 🎉':sc>=3?'Good job! 👍':'Thoda aur practice karo 💪'}</div></div>`;cont.insertBefore(b,cont.firstChild);}
+}
+
+/* ═══════ CHARTS ═══════ */
+function initCharts(){
+  if(chartsInited.main)return;chartsInited.main=true;
+  const tc=document.getElementById('ch-trend');
+  if(tc)new Chart(tc,{type:'line',data:{labels:['Jan 1','Jan 15','Feb 1','Feb 15','Mar 1','Mar 15','Mar 20'],datasets:[{label:'Readiness',data:[48,50,52,55,57,60,62],borderColor:'#1a3a5c',backgroundColor:'rgba(26,58,92,.08)',tension:.4,fill:true,pointBackgroundColor:'#f59e0b',pointRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{min:40,max:80,ticks:{callback:v=>v+'/100'}}}}});
+  const sc=document.getElementById('ch-sub');
+  if(sc)new Chart(sc,{type:'bar',data:{labels:['Quant','Reasoning','English','GK'],datasets:[{data:[63,71,44,55],backgroundColor:['#3b82f6','#10b981','#ef4444','#f59e0b'],borderRadius:5}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%'}}}}});
+}
+function initProfileChart(){
+  if(chartsInited.profile)return;chartsInited.profile=true;
+  const c=document.getElementById('ch-profile');
+  if(c)new Chart(c,{type:'line',data:{labels:['Day 1','Wk 2','Wk 4','Wk 6','Wk 8','Wk 10','Today'],datasets:[{data:[48,50,53,56,58,60,62],borderColor:'#f59e0b',backgroundColor:'rgba(245,158,11,.08)',tension:.4,fill:true,pointBackgroundColor:'#f59e0b',pointRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{min:40,max:80}}}});
+}
+
+/* ═══════ CHAT ═══════ */
+const REPLIES={
+  'mera score kaisa hai':'Rahul, data dekh raha hoon 📊\n\n**Readiness: 62/100** (14 points up from Day 1!)\n\nSubject-wise:\n• Reasoning: **71%** ✅ Almost ready\n• Quant: **62%** — achha, aur scope hai\n• GK: **55%** — improvement possible\n• English: **44%** ⚠️ SABSE WEAK — Focus yahan!\n\nSSC CGL ke liye 72+ chahiye. Gap: 10 points. English improve karo — fastest gain wahan hai.',
+  'aaj kya padhun':'Priority plan for today 🗺️\n\n🔴 **Priority 1:** English Synonyms (8 PM, 45 min) — score sirf 36%\n🟡 **Priority 2:** Algebra Word Problems (8:50 PM, 35 min) — Error Journal mein 3 same mistakes\n🟢 **Priority 3:** GK History (10 PM, 25 min) — new topic\n\nTotal: **~105 min** — realistic for your 3-4 hr availability.\n\nSabse pehle English karo — highest impact on score!',
+  'meri weakness kya hai':'Top 3 weaknesses (data se) 🔍\n\n1. **English Vocabulary — 36%** 🔴\n   Synonyms, antonyms, idioms — 5 qs guaranteed in SSC.\n\n2. **Algebra Word Problems — 38%** 🔴\n   Error Journal mein 3× same mistake — concept gap hai.\n\n3. **GK Govt. Schemes — 42%** 🟡\n   Dynamic — daily current affairs se solve hoga.\n\nGood news: Reasoning 71% — almost ready! 💪',
+  'cgl clear karunga':'Data-based honest answer 🎯\n\n**Abhi: 62/100 | Target: 72+**\n\nGap sirf 10 points — fully achievable!\n\nProjection with plan:\n• Reasoning: 71 → 75+ in 3 weeks\n• Quant: 62 → 70+ in 4-5 weeks\n• English: 44 → 58-62 in 6-8 weeks\n• GK: 55 → 65+ in 4 weeks\n\n**90-day projection: 74-78** ✅\n\nHaan, tu clear kar sakta hai Rahul. Par English pe serious focus chahiye abhi.',
+  'english kaise improve karu':'English improvement strategy 📖\n\n**Vocab (20 min/day):**\nSSC wordlist — daily 15-20 synonyms-antonyms. Error Journal ke missed words revisit karo.\n\n**Grammar (15 min/day):**\nSubject-Verb agreement, Tenses, Articles — ye 3 topics SSC mein most common hain.\n\n**Reading (10 min/day):**\nHar roz 1 English paragraph — comprehension speed badhegi.\n\n**Expected:** 44% → 58-62% in 6-7 weeks.',
+  'aaj ka plan explain karo':'Aaj ke plan ki full explanation 📅\n\n✅ **Morning (Done):**\n• 6:30 AM — Coding-Decoding (40 min) — Completed!\n• 7:15 AM — Micro-quiz (10 min) — Validated!\n\n🟡 **Evening (Pending 4 tasks):**\n• 8:00 PM — English: Synonyms (45 min) — Score 36%, urgent!\n• 8:50 PM — Algebra: Word Problems (35 min) — 3× Error Journal mistake\n• 9:30 PM — Quant Mock Test (25 min) — Weekly drill\n• 10:00 PM — GK: Modern History (25 min) — Syllabus coverage\n\nFocus order: English FIRST tonight. Highest ROI.',
+  'algebra kyun weak hai':'Algebra weakness analysis 📐\n\nData se 3 clear patterns:\n\n1. **"Exceeds by" type problems** — tu equation wrongly set karta hai\n2. **Denominator clearing** — 144×5 step mein galti\n3. **Two-variable problems** — equation setup unclear\n\nError Journal mein is week 3 baar same mistake aayi.\n\n**Action plan:**\n• Aaj 35 min — Translation Method practice karo\n• "A exceeds B by C → A-B=C" — ye rule yaad kar lo\n• Micro-quiz ke baad score check karo\n\nAccuracy 38% → 60%+ possible in 2 weeks!',
+};
+function cQ(q){document.getElementById('cinp').value=q;sendC();}
+function sendC(){
+  const inp=document.getElementById('cinp');const msg=inp?.value?.trim();if(!msg)return;
+  const msgs=document.getElementById('cmsgs');if(!msgs)return;
+  msgs.innerHTML+=`<div class="msg-r user"><div><div class="msg-b">${msg}</div><div class="msg-t">Abhi</div></div></div>`;
+  inp.value='';
+  msgs.innerHTML+=`<div class="msg-r bot" id="typing"><div class="m-av">🤖</div><div><div class="msg-b"><div class="typing"><span></span><span></span><span></span></div></div></div></div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+  const key=msg.toLowerCase().replace(/[?!।,]/g,'').trim();
+  let rep=null;for(const[k,v] of Object.entries(REPLIES)){if(key.includes(k.substring(0,10))||k.includes(key.substring(0,10))){rep=v;break;}}
+  if(!rep)rep=`"${msg}" ke baare mein teri profile check ki.\n\nCurrent readiness **62/100** hai. English (44%) aur Algebra (38%) pe focus karna abhi highest-impact hai. In dono pe mila ke ~15 marks improve ho sakte hain. Aur poochho! 💡`;
+  setTimeout(()=>{
+    const t=document.getElementById('typing');
+    if(t)t.outerHTML=`<div class="msg-r bot"><div class="m-av">🤖</div><div><div class="msg-b">${rep.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}</div><div class="msg-t">Abhi</div></div></div>`;
+    msgs.scrollTop=msgs.scrollHeight;
+  },1300);
+}
+
+/* ═══════ MODALS ═══════ */
+function showModal(type,data){
+  const M={
+    skipReason:i=>`<div class="mo-hd"><h3>⏭️ Skip karne ka reason?</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Task: <strong>${D.tasks[i]?.topic||'Task'}</strong></div>
+    <div id="skip-opts" style="display:flex;flex-direction:column;gap:7px">
+      ${[['Too difficult right now','AI topic ko chhotey parts mein todega'],['Already studied this well','Quick 3-question quiz se verify karein?'],['Not enough time today','Longer slot mein reschedule karein'],['Feeling low / unmotivated','AI plan halka kar dega'],['Other reason','Custom note likhein']].map(([r,h],ri)=>`<div class="opt" onclick="selectSkipR(${ri},this)"><div><div style="font-size:12px;font-weight:700">${r}</div><div style="font-size:10px;color:var(--muted)">${h}</div></div></div>`).join('')}
+    </div>
+    <input class="fc" placeholder="Optional: kuch aur likhna hai..." style="margin-top:11px;font-size:12px">
+    <div style="display:flex;gap:7px;margin-top:12px">
+      <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Cancel</button>
+      <button class="btn btn-br" style="flex:1" id="skip-confirm" onclick="confirmSkip(${i})" disabled>Confirm Skip</button>
+    </div>`,
+
+    quickDone:i=>`<div class="mo-hd"><h3>🎯 That was quick!</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Task completed in less than expected time. Select one:</div>
+    ${[['✅ Already know this well','Mark as mastered — confidence boost!'],['👁️ Just reviewed (no deep study)','Task stays in plan, light credit'],['🧠 Want a 3-question quiz to confirm?','Validate understanding quickly']].map(([l,h])=>`<div class="opt" style="margin-bottom:7px" onclick="handleQuickDone(${i},'${l}',this)"><div><div style="font-size:13px;font-weight:700">${l}</div><div style="font-size:11px;color:var(--muted)">${h}</div></div></div>`).join('')}
+    <div style="display:flex;gap:7px;margin-top:12px">
+      <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Skip Quiz</button>
+    </div>`,
+
+    startTask:i=>`<div class="mo-hd"><h3>▶ Starting Task</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="text-align:center;padding:12px">
+      <div style="font-size:13px;font-weight:800;margin-bottom:4px">${D.tasks[i]?.topic||'Task'}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">${D.tasks[i]?.dur||''} · ${D.tasks[i]?.sub||''}</div>
+      <div style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;text-align:left">
+        <div style="font-weight:700;margin-bottom:6px">⏱️ Study Mode</div>
+        <div style="color:var(--muted)">Timer will track your study duration. Mark done when finished. AI verifies with micro-quiz.</div>
+      </div>
+      <button class="btn btn-br" style="width:100%;padding:12px" onclick="confirmDone(${i})">✅ Mark as Done Now</button>
+    </div>`,
+
+    strategic_skip:`<div class="mo-hd"><h3>⚠️ AI Topic Suggestion</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px">
+      <div style="font-weight:800;margin-bottom:6px;color:var(--red)">Algebra: Word Problems</div>
+      <div>• Reviewed: 5 days · Avg quiz score: <strong>38%</strong></div>
+      <div>• Exam weightage: ~10 questions</div>
+      <div>• Time to exam: 204 days</div>
+    </div>
+    <div style="font-size:12px;margin-bottom:14px;color:var(--muted)">Is topic mein limited improvement hai. Kya karna chahte ho?</div>
+    ${[['Keep trying','AI topic ko smaller sub-topics mein todega'],["Pause for 2 weeks","High-yield alternatives pe focus karo (Ratio: 78%, Percentage: 78%)"],["Get help","Study group ke member se connect karo jo master hai"]].map(([o,d])=>`<div class="opt" style="margin-bottom:7px" onclick="closeMo()"><div><div style="font-size:12px;font-weight:700">${o}</div><div style="font-size:10px;color:var(--muted)">${d}</div></div></div>`).join('')}`,
+
+    skipped_view:`<div class="mo-hd"><h3>↪ Rescheduled Tasks</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Ye tasks skip hue the — AI ne automatically reschedule kiya hai.</div>
+    ${[{t:'GK: Economy Basics',from:'19 Mar',to:'21 Mar',reason:'Not enough time'},
+       {t:'English: Cloze Test',from:'18 Mar',to:'22 Mar',reason:'Feeling low'},
+    ].map(r=>`<div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px">
+      <div><div style="font-size:12px;font-weight:700">${r.t}</div><div style="font-size:10px;color:var(--muted)">Reason: ${r.reason}</div></div>
+      <div style="font-size:11px;color:var(--muted);text-align:right"><div>${r.from}</div><div style="color:var(--blue)">→ ${r.to}</div></div>
+    </div>`).join('')}`,
+
+    questionReview:`<div class="mo-hd"><h3>🔍 Question-by-Question Review</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div class="alt a-i">Tap 💬 on any question to ask AI Coach for detailed Hinglish explanation.</div>
+    ${[{q:'Q47 — Algebra: Word Problems',your:'B (120)',correct:'C (100)',status:'wrong'},
+       {q:'Q23 — English: Cloze Test',your:'Skipped',correct:'A',status:'skip'},
+       {q:'Q15 — Reasoning: Analogy',your:'A',correct:'A',status:'correct'},
+       {q:'Q8 — GK: Current Affairs',your:'D (South Africa)',correct:'B (Pakistan)',status:'wrong'},
+    ].map(q=>`<div style="padding:11px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div style="flex:1"><div style="font-size:12px;font-weight:700">${q.q}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">Your answer: <span style="color:${q.status==='correct'?'var(--green)':q.status==='wrong'?'var(--red)':'var(--orange)'};font-weight:700">${q.your}</span> · Correct: <span style="color:var(--green);font-weight:700">${q.correct}</span></div>
+        </div>
+        <div style="display:flex;gap:5px;margin-left:8px">
+          ${q.status!=='correct'?`<button class="btn btn-xs btn-pur" onclick="showModal('aiExplain','${q.q}')">💬 AI</button>`:''}
+          ${q.status==='wrong'?`<button class="btn btn-xs btn-gh" onclick="showModal('flagReport','${q.q}')">🚩</button>`:''}
+        </div>
+      </div>
+    </div>`).join('')}`,
+
+    aiExplain:q=>`<div class="mo-hd"><h3>💬 AI Coach Explanation</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="background:var(--bg);border-radius:9px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--muted)">${q}</div>
+    <div style="background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;border-radius:11px;padding:16px;font-size:13px;line-height:1.6">
+      <div style="font-size:10px;color:var(--accent);letter-spacing:1px;text-transform:uppercase;margin-bottom:7px">🤖 EXAMBHAI COACH (Sarvam 30B)</div>
+      Aapne yahan common mistake ki — "exceeds by" ko equation mein galat set kiya.<br><br>
+      <strong>Step-by-step:</strong><br>
+      Let number = x<br>
+      3x - (3/5)x = 144 → 12x/5 = 144 → x = 60<br><br>
+      ✅ <strong>Tip:</strong> "A exceeds B by C" matlab A-B=C. Ye formula yaad rakhna.<br><br>
+      <div style="margin-top:10px"><strong>Agla step:</strong> Similar question try karo → "4 times a number exceeds its 2/5 by 180"</div>
+    </div>
+    <button class="btn btn-br" style="width:100%;margin-top:12px" onclick="closeMo()">✅ Samajh gaya</button>`,
+
+    flagReport:`<div class="mo-hd"><h3>🚩 Report This Question</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:13px">Flag karo agar question ya answer mein koi problem hai. AI 5 minutes mein re-analyze karega.</div>
+    ${['Question is unclear/ambiguous','Correct answer seems wrong','Options have multiple correct','Typo / formatting error','Other'].map((r,i)=>`<div class="opt" style="margin-bottom:6px" onclick="selectFlag(${i},this)"><span style="font-size:12px">${r}</span></div>`).join('')}
+    <input class="fc" placeholder="Additional details (optional)" style="margin-top:10px;font-size:12px">
+    <div style="display:flex;gap:7px;margin-top:12px">
+      <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Cancel</button>
+      <button class="btn btn-rd" style="flex:1" onclick="submitFlag()">🚩 Submit Report</button>
+    </div>`,
+
+    flagDetail:id=>{const f=D.flags.find(x=>x.id===id);return `<div class="mo-hd"><h3>🚩 Flag Details</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="background:var(--bg);border-radius:9px;padding:12px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;margin-bottom:4px">${f.q}</div>
+      <div style="font-size:12px;color:var(--muted)">Flagged: ${f.flagged} · Reason: ${f.reason}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span class="bdg ${f.status==='resolved'?'g':'o'}">${f.status==='resolved'?'✅ Resolved':'⏳ Under Review'}</span>
+      ${f.status==='resolved'?'<span style="font-size:11px;color:var(--muted)">Resolved within 24 hours</span>':'<span style="font-size:11px;color:var(--muted)">AI re-analysis in progress...</span>'}
+    </div>
+    ${f.status==='resolved'?`<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:14px;font-size:12px;line-height:1.6;color:#065f46">${f.resolution}</div>
+    <button class="btn btn-br" style="width:100%;margin-top:12px" onclick="closeMo()">✅ Got it, Thanks!</button>`:
+    `<div class="alt a-i">AI reviewing this question now. Expected within 5 minutes. You'll be notified when resolved.</div>`}`;},
+
+    showDayDetail:(i)=>`<div class="mo-hd"><h3>📅 Day Detail</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div class="alt a-i">Day ${i+17}, March 2026 — Schedule</div>`,
+
+    planMigration:exam=>`<div class="mo-hd"><h3>🔄 ${exam} — Study Plan</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Tu SSC CGL prepare kar raha hai. Ab ${exam} add karna hai. Options:</div>
+    ${[['Separate plan create karo','Dono exams ke liye alag plans — switch possible'],['Merge: overlapping topics prioritize karo','70% topics common hain — efficient strategy'],['CGL plan rakho, CHSL-specific add karo','Minimal additions needed']].map(([o,d])=>`<div class="opt" style="margin-bottom:7px" onclick="closeMo()"><div><div style="font-size:12px;font-weight:700">${o}</div><div style="font-size:10px;color:var(--muted)">${d}</div></div></div>`).join('')}
+    <div style="background:var(--bg);border-radius:9px;padding:11px;margin-top:11px;font-size:11px">
+      <div style="font-weight:700;margin-bottom:5px">📊 Overlap Analysis:</div>
+      <div style="color:var(--muted)">• Overlapping (70%): Quant, Reasoning, English basics<br>• CGL-specific: Higher difficulty, Tier-2<br>• CHSL-specific: Typing test, different weightage</div>
+    </div>`,
+
+    upgrade:plan=>`<div class="mo-hd"><h3>💳 Upgrade — ${plan==='premium'?'Premium ₹99/mo':'Exam Pack ₹399'}</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="text-align:center;padding:10px"><div style="font-size:44px;margin-bottom:10px">${plan==='premium'?'🚀':'🎯'}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">${plan==='premium'?'Unlimited mocks, Error Journal, full analytics, PDF downloads, unlimited AI.':'6 months full access — saves ₹200 vs monthly.'}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">${['💳 UPI / PhonePe','🏦 Net Banking','💰 Debit Card','📱 Credit / EMI'].map(m=>`<button class="btn btn-gh" style="justify-content:center">${m}</button>`).join('')}</div>
+    <button class="btn btn-ac" style="width:100%;padding:12px;font-size:14px" onclick="paySuccess()">✅ Pay ${plan==='premium'?'₹99':'₹399'} Now</button>
+    <div style="font-size:10px;color:var(--muted);margin-top:8px">Razorpay Secured · No auto-renewal · 7-day guarantee</div></div>`,
+
+    dlAll:`<div class="mo-hd"><h3>📥 Download All Tests</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="text-align:center;padding:14px"><div style="font-size:42px;margin-bottom:10px">📥</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">${D.tests.length} tests ki full PDF bundle — questions, your answers, correct answers, Hindi explanations per question.</p>
+    <button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">📥 Download Bundle (${D.tests.length} PDFs)</button></div>`,
+
+    dlAllPYP:`<div class="mo-hd"><h3>📥 Download All PYP Papers</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="text-align:center;padding:14px"><div style="font-size:42px;margin-bottom:10px">📚</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">SSC CGL (2019-2024), CHSL (2020-2024), Railways NTPC (2021-2024) — sab PDFs ek bundle.</p>
+    <button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">📥 Download Full Bundle</button></div>`,
+
+    dlTest:n=>`<div style="text-align:center;padding:16px"><div style="font-size:42px;margin-bottom:10px">📥</div><h3 style="margin-bottom:8px">Downloading: ${n}</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Full PDF includes: questions, your answers, correct answers with Hindi explanations, performance chart.</p><button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">✅ Done</button></div>`,
+
+    dlPYP:n=>`<div style="text-align:center;padding:16px"><div style="font-size:42px;margin-bottom:10px">📥</div><h3 style="margin-bottom:8px">${n}</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Original paper PDF with official solutions.</p><button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">✅ Download</button></div>`,
+
+    dlCA:`<div style="text-align:center;padding:16px"><div style="font-size:42px;margin-bottom:10px">📰</div><h3 style="margin-bottom:8px">Current Affairs PDF</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Formatted Hindi-English compilation — exam-relevant facts only.</p><button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">✅ Download</button></div>`,
+
+    shareWinCard:`<div class="mo-hd"><h3>🏆 Share Win Card</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;border-radius:13px;padding:22px;text-align:center;margin-bottom:14px">
+      <div style="font-size:11px;opacity:.5;margin-bottom:6px;letter-spacing:1px">EXAMBHAI PROGRESS CARD</div>
+      <div style="font-size:36px;font-weight:900;color:var(--accent)">+14 Points</div>
+      <div style="font-size:14px;margin:4px 0">Score: 48 → 62 in 30 days</div>
+      <div style="font-size:12px;opacity:.6">Rahul Kumar · SSC CGL 2026 · March 2026</div>
+      <div style="display:flex;justify-content:center;gap:14px;margin-top:12px;font-size:12px">
+        <div><div style="font-size:16px;font-weight:800">80%</div><div style="opacity:.5">Task Rate</div></div>
+        <div><div style="font-size:16px;font-weight:800">8 Days</div><div style="opacity:.5">Streak</div></div>
+        <div><div style="font-size:16px;font-weight:800">#842</div><div style="opacity:.5">All India</div></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="btn btn-br" style="justify-content:center;padding:11px" onclick="closeMo()">📱 Share on WhatsApp</button>
+      <button class="btn btn-gh" style="justify-content:center;padding:11px" onclick="closeMo()">📥 Save as Image</button>
+    </div>`,
+
+    applyAdj:`<div class="mo-hd"><h3>✅ Apply Weekly Adjustments</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">AI ne ye changes suggest kiye hain based on last week's data:</div>
+    ${['Evening tasks moved to morning slot (better completion rate)','Algebra broken into smaller 20-min chunks (too difficult pattern)','English frequency increased: 2x/week → 3x/week','Added 1 extra micro-quiz after Algebra sessions'].map(a=>`<div class="alt a-s" style="margin-bottom:6px">✅ ${a}</div>`).join('')}
+    <button class="btn btn-br" style="width:100%;margin-top:11px;padding:11px" onclick="closeMo()">✅ Apply All Changes</button>`,
+
+    settingsSaved:`<div style="text-align:center;padding:16px"><div style="font-size:44px;margin-bottom:10px">✅</div><h3 style="margin-bottom:8px">Settings Saved!</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">AI plan teri new settings ke hisaab se update ho gaya.</p><button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">Done</button></div>`,
+
+    dataExport:`<div class="mo-hd"><h3>📊 Export My Data</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">India DPDP Act 2023 ke under, tujhe apna data export karne ka right hai.</div>
+    ${['📊 Performance & Test History (CSV)','💙 Mood Logs (CSV — anonymized)','📋 Study Plan History (JSON)','🔴 Error Journal (PDF)'].map(e=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px;background:var(--bg);border-radius:8px;margin-bottom:6px"><span style="font-size:12px">${e}</span><button class="btn btn-xs btn-br" onclick="closeMo()">📥 Export</button></div>`).join('')}
+    <div style="font-size:10px;color:var(--muted);margin-top:10px;text-align:center">🔒 Ye data sirf teri own use ke liye hai. Kabhi third party ke saath share nahi hoga.</div>`,
+
+    askAI:i=>`<div class="mo-hd"><h3>💬 Ask AI About Q${i+1}</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="margin-bottom:12px;font-size:12px;background:var(--bg);border-radius:8px;padding:10px">${D.testQs[i]?.q||'Question'}</div>
+    ${['Explain this question in detail','Why was my answer wrong?','Give me a similar practice question','What is the time-saving trick?'].map(q=>`<div class="opt" style="margin-bottom:6px" onclick="closeMo();go('coach');setTimeout(()=>cQ('${q}'),400)">${q}</div>`).join('')}
+    <input class="fc" placeholder="Type your own question..." style="margin-top:10px;font-size:12px" onkeypress="if(event.key==='Enter'){const v=this.value;closeMo();go('coach');setTimeout(()=>{document.getElementById('cinp').value=v;sendC();},400);}">`,
+
+    askAIPost:q=>`<div class="mo-hd"><h3>💬 AI Explanation</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div class="alt a-p" style="margin-bottom:12px">${q}</div>
+    <div style="background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;border-radius:11px;padding:14px;font-size:12px;line-height:1.6">
+      <div style="font-size:9px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🤖 EXAMBHAI Coach</div>
+      Is question mein aapne common mistake ki. Step-by-step explanation:<br><br>
+      • Problem ka equation carefully likhao<br>
+      • "Exceeds by" → Subtraction formula use karo<br>
+      • Final answer verify karo by substituting back<br><br>
+      ✅ <strong>Quick Tip:</strong> Har word problem mein pehle equation likhao, phir solve karo. Speed aayegi.
+    </div>
+    <button class="btn btn-br" style="width:100%;margin-top:11px" onclick="closeMo()">✅ Got it</button>`,
+  };
+  const fn=M[type];
+  document.getElementById('moInner').innerHTML=fn?(typeof fn==='function'?fn(data):fn):`<div class="mo-hd"><h3>${type}</h3><button class="mo-x" onclick="closeMo()">✕</button></div><p style="color:var(--muted)">Loading...</p>`;
+  document.getElementById('mo').classList.add('on');
+}
+function showDayDetail(i){showModal('showDayDetail',i);}
+function showTestResult(id){
+  const t=D.tests.find(x=>x.id===id);if(!t)return;
+  document.getElementById('moInner').innerHTML=`<div class="mo-hd"><h3>📊 ${t.name}</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+  <div class="rs-big"><div style="font-size:11px;opacity:.5;margin-bottom:3px">${t.date}</div>
+    <div class="rs-val">${t.score}<span style="font-size:20px;opacity:.4">/${t.total}</span></div>
+    <div class="rs-dets"><div><div class="rs-d-v" style="color:#10b981">${t.cor}</div><div style="opacity:.5">Correct</div></div><div><div class="rs-d-v" style="color:#ef4444">${t.wr}</div><div style="opacity:.5">Wrong</div></div><div><div class="rs-d-v">#${t.rank.toLocaleString()}</div><div style="opacity:.5">All India</div></div></div>
+  </div>
+  ${t.secs?`<div style="margin-bottom:12px">${Object.entries(t.secs).map(([s,d])=>`<div style="display:flex;justify-content:space-between;padding:9px;background:var(--bg);border-radius:8px;margin-bottom:5px;font-size:12px"><strong>${s}</strong><span class="bdg ${d.s/d.t>=.6?'g':'o'}">${d.s}/${d.t}</span></div>`).join('')}</div>`:''}
+  <div class="ins-c" style="margin-bottom:11px"><div class="ins-tag">🤖 AI Feedback</div><div class="ins-txt" style="font-size:12px">English section weak tha — vocabulary + error detection pe focus karo. Reasoning maintain karo.</div></div>
+  <div style="display:flex;gap:7px"><button class="btn btn-br" style="flex:1" onclick="showModal('dlTest','${t.name}')">📥 PDF</button><button class="btn btn-gh" style="flex:1" onclick="closeMo()">Close</button></div>`;
+  document.getElementById('mo').classList.add('on');
+}
+
+let selectedSkipRI=-1;
+function selectSkipR(i,el){selectedSkipRI=i;document.querySelectorAll('#skip-opts .opt').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');const btn=document.getElementById('skip-confirm');if(btn)btn.disabled=false;}
+let selectedFlagI=-1;
+function selectFlag(i,el){selectedFlagI=i;document.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');}
+function handleQuickDone(i,choice,el){document.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');setTimeout(()=>{confirmDone(i);},400);}
+function submitFlag(){showModal('flagSubmitted');setTimeout(()=>{document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px"><div style="font-size:44px;margin-bottom:10px">✅</div><h3 style="color:var(--green);margin-bottom:8px">Flag Submitted!</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Sarvam 105B AI is re-analyzing this question now. You'll be notified within 5 minutes.</p><div class="alt a-i" style="text-align:left">Expected resolution: ~5 minutes (AI auto-review) or 24 hours (human expert if needed)</div><button class="btn btn-br" style="width:100%;margin-top:11px" onclick="closeMo()">OK</button></div>`;},200);}
+function paySuccess(){closeMo();setTimeout(()=>{document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px"><div style="font-size:48px;margin-bottom:10px">🎉</div><h3 style="color:var(--green);margin-bottom:6px">Payment Successful!</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Welcome to EXAMBHAI Premium! All features unlocked.</p><button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">Start Learning →</button></div>`;document.getElementById('mo').classList.add('on');},200);}
+</script>
+</body>
+</html>
