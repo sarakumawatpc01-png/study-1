@@ -1,5 +1,6 @@
 const http = require('http');
 const crypto = require('crypto');
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'smoke-test-secret';
 const app = require('./server');
 
 function req(method, path, body) {
@@ -46,6 +47,11 @@ async function run() {
     exam: 'SSC CGL',
   });
   if (signup.status !== 201 || !signup.body.token) throw new Error('Signup failed');
+
+  const sqlite = require('better-sqlite3');
+  const db = sqlite('./data/app.db');
+  db.prepare("DELETE FROM users WHERE email = ?").run(signup.body.user.email);
+  db.close();
 
   server.close();
   console.log('Smoke test passed');

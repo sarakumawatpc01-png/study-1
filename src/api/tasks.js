@@ -80,7 +80,9 @@ router.post('/:taskId/complete', (req, res) => {
 
   const { actual_time, early_completion_reason } = parsed.data;
   if (actual_time < task.suggested_time && !early_completion_reason) {
-    return res.status(400).json({ error: 'early_completion_reason required for early finish' });
+    return res.status(400).json({
+      error: 'Please provide a reason when completing the task earlier than the suggested time',
+    });
   }
 
   db.prepare(

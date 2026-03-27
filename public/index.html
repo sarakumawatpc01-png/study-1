@@ -692,6 +692,29 @@ async function bootstrapTasksFromApi(){
 async function pullServerAnalytics(){
   try{serverAnalytics=await apiFetch('/analytics/summary');}catch(e){}
 }
+async function loadServerProfile(){
+  try{
+    const data=await apiFetch('/profile');
+    if(data?.profile){
+      D.student.mood=data.profile.mood||D.student.mood;
+      D.student.score=Number.isFinite(Number(data.profile.readiness_score))?Number(data.profile.readiness_score):D.student.score;
+    }
+    if(Array.isArray(data?.moods)&&data.moods.length){
+      D.student.mood_today_done=true;
+    }
+  }catch(e){}
+}
+async function loadServerNotifications(){
+  try{
+    const rows=await apiFetch('/notifications');
+    const el=document.getElementById('np-a');
+    const cnt=document.getElementById('bbn');
+    if(cnt)cnt.textContent=String(rows.filter(r=>!r.read_flag).length||0);
+    if(el&&Array.isArray(rows)&&rows.length){
+      el.innerHTML=rows.map(r=>`<div class="np-it ${r.read_flag?'':'unrd'}"><div class="nit">${r.title}</div><div class="nib">${r.body}</div><div class="nit-t">${new Date(r.created_at).toLocaleString()}</div></div>`).join('');
+    }
+  }catch(e){}
+}
 
 function nowIso(){return new Date().toISOString();}
 function minsFromMs(ms){return Math.max(0,Math.round(ms/60000));}
@@ -719,7 +742,14 @@ function normalizeTask(t,idx){
   }
   return t;
 }
-function saveTasks(){try{localStorage.setItem('exambhai_tasks_v1',JSON.stringify(D.tasks));localStorage.setItem('exambhai_task_logs_v1',JSON.stringify(D.taskLogs||[]));}catch(e){}}
+function saveTasks(){
+  try{
+    localStorage.setItem('exambhai_tasks_v1',JSON.stringify(D.tasks));
+    localStorage.setItem('exambhai_task_logs_v1',JSON.stringify(D.taskLogs||[]));
+  }catch(e){
+    console.error('Failed to save tasks locally',e);
+  }
+}
 function loadTasks(){
   try{
     const tRaw=localStorage.getItem('exambhai_tasks_v1');
@@ -730,7 +760,14 @@ function loadTasks(){
   D.tasks=D.tasks.map((t,idx)=>normalizeTask(t,idx));
 }
 function loadFocusState(){try{const raw=localStorage.getItem(FOCUS_STATE_KEY);return raw?JSON.parse(raw):null;}catch(e){return null;}}
-function saveFocusState(state){try{if(state)localStorage.setItem(FOCUS_STATE_KEY,JSON.stringify(state));else localStorage.removeItem(FOCUS_STATE_KEY);}catch(e){}}
+function saveFocusState(state){
+  try{
+    if(state)localStorage.setItem(FOCUS_STATE_KEY,JSON.stringify(state));
+    else localStorage.removeItem(FOCUS_STATE_KEY);
+  }catch(e){
+    console.error('Failed to persist focus state',e);
+  }
+}
 function getElapsedSecs(task){if(!task||!task.started_at)return 0;const start=Date.parse(task.started_at);if(Number.isNaN(start))return 0;return secsFromMs(Date.now()-start);}
 function updateFocusTimer(){const el=document.getElementById('focusTimer');if(!el||!activeTask)return;const t=D.tasks[activeTask.taskIndex];if(!t)return;el.textContent=fmtMMSS(getElapsedSecs(t));}
 function startFocusTicker(){clearInterval(focusTicker);focusTicker=setInterval(updateFocusTimer,1000);}
@@ -774,6 +811,8 @@ async function launch(){
   await ensureAuth();
   loadTasks();
   await bootstrapTasksFromApi();
+  await loadServerProfile();
+  await loadServerNotifications();
   await pullServerAnalytics();
   document.getElementById('ob').classList.add('hidden');
   document.getElementById('app').classList.add('on');
@@ -797,6 +836,9 @@ function go(sec){
   if(sec==='profile')setTimeout(initProfileChart,100);
 }
 function toggleNp(){document.getElementById('np').classList.toggle('on');}
+async function pushNotification(title,body){
+  try{await apiFetch('/notifications',{method:'POST',body:JSON.stringify({title,body})});await loadServerNotifications();}catch(e){}
+}
 function npT(el,id){document.querySelectorAll('.np-tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.np-body').forEach(b=>b.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');}
 document.addEventListener('click',e=>{if(!e.target.closest('#np')&&!e.target.closest('.bell-w'))document.getElementById('np').classList.remove('on');});
 document.getElementById('mo').addEventListener('click',function(e){if(e.target===this)this.classList.remove('on');});
@@ -845,8 +887,14 @@ function selectMood(v,l,el){
   el.classList.add('sel');
   document.getElementById('mood-submit').disabled=false;
 }
-function submitMood(){
+async function submitMood(){
   D.student.mood_today_done=true;
+  const moodLabel={optimal:'Calm & Focused',neutral:'Normal / Okay',stressed:'Stressed',very_stressed:'Very Stressed',low_energy:'Low Energy / Tired'};
+  D.student.mood=moodLabel[selectedMoodV]||D.student.mood;
+  try{
+    const note=document.querySelector('#moInner input.fc')?.value?.trim()||'';
+    await apiFetch('/profile/mood',{method:'POST',body:JSON.stringify({mood:D.student.mood,note:note||null})});
+  }catch(e){}
   const msgs={optimal:"Focus accha hai! Chalo aaj ek weak topic challenge karein. 🚀",neutral:"Chalo aaj ka plan shuru karte hain. Step by step, aap kar lenge! 💪",stressed:"Thoda pressure hai? Pehle ek aasaan topic se confidence banao. 💙",very_stressed:"Lagta hai bahut pressure hai. Aaj thoda light chalo — kal fresh start. 🤗",low_energy:"Energy kam hai toh chhote sessions karo. 20 min padh ke 5 min break lo. 🙏"};
   document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px">
     <div style="font-size:44px;margin-bottom:10px">${selectedMoodV==='optimal'?'🚀':selectedMoodV==='very_stressed'?'🤗':selectedMoodV==='low_energy'?'🙏':'💙'}</div>
@@ -1511,6 +1559,7 @@ async function confirmSkip(i){
   t.status='skipped';t.skipped_reason=selected==='other'?reason:selected;t.completed_at=nowIso();t.started_at=t.started_at||'';t.actual_time=t.actual_time||0;t.early_completion_reason='';t.interruption_flag=false;
   D.taskLogs.push({task_id:t.task_id,event:'skipped',at:nowIso(),skip_reason:t.skipped_reason});
   try{await apiFetch(`/tasks/${encodeURIComponent(t.task_id)}/skip`,{method:'POST',body:JSON.stringify({reason:t.skipped_reason})});await pullServerAnalytics();}catch(e){}
+  pushNotification('Task skipped',`${t.topic} skipped: ${t.skipped_reason}`);
   saveTasks();closeMo();refreshTasks();
 }
 async function startTask(i){
@@ -1530,6 +1579,7 @@ async function completeTaskWithReason(i,reasonKey,otherText=''){
     await apiFetch(`/tasks/${encodeURIComponent(t.task_id)}/complete`,{method:'POST',body:JSON.stringify({actual_time:t.actual_time,early_completion_reason:t.early_completion_reason||null})});
     await pullServerAnalytics();
   }catch(e){}
+  pushNotification('Task completed',`${t.topic} completed in ${t.actual_time} min`);
   saveTasks();saveFocusState(null);closeFocus();closeMo();refreshTasks();
 }
 function completeActiveTask(){
@@ -1554,6 +1604,7 @@ async function exitFocusEarly(){
   t.actual_time=minsFromMs(Date.now()-Date.parse(t.started_at||nowIso()));t.status='interrupted';t.interruption_flag=true;
   D.taskLogs.push({task_id:t.task_id,event:'interrupted',at:nowIso(),actual_time:t.actual_time,suggested_time:t.suggested_time});
   try{await apiFetch(`/tasks/${encodeURIComponent(t.task_id)}/interrupt`,{method:'POST',body:JSON.stringify({actual_time:t.actual_time})});await pullServerAnalytics();}catch(e){}
+  pushNotification('Task interrupted',`${t.topic} interrupted at ${t.actual_time} min`);
   saveTasks();saveFocusState(null);closeFocus();refreshTasks();
 }
 function refreshTasks(){
@@ -1611,6 +1662,14 @@ function submitTest(){
   let cor=0,wr=0,sk=0;
   D.testQs.forEach((q,i)=>{if(tAns[i]===undefined)sk++;else if(tAns[i]===q.ans)cor++;else wr++;});
   const sc=cor*2-wr*.5;
+  try{apiFetch('/mock-tests',{method:'POST',body:JSON.stringify({name:'Live Mock Test',score:Math.max(0,Math.round(sc)),total:D.testQs.length*2})});}catch(e){}
+  try{
+    D.testQs.forEach((q,i)=>{
+      if(tAns[i]!==undefined&&tAns[i]!==q.ans){
+        apiFetch('/error-journal',{method:'POST',body:JSON.stringify({topic:q.top,question:q.q,your_answer:String(q.opts[tAns[i]]||''),correct_answer:String(q.opts[q.ans]),explanation:q.expl,next_review_at:new Date(Date.now()+7*24*60*60*1000).toISOString()})});
+      }
+    });
+  }catch(e){}
   document.getElementById('moInner').innerHTML=`
   <div class="mo-hd"><h3>✅ Test Complete</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
   <div class="rs-big"><div style="font-size:11px;opacity:.5;margin-bottom:3px">Test Score</div>
