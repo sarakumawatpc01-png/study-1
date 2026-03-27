@@ -159,6 +159,15 @@ tr:hover td{background:#fafbfc;}
 .mo-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
 .mo-hd h3{font-size:15px;font-weight:800;}
 .mo-x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);}
+.focus{display:none;position:fixed;inset:0;z-index:650;background:linear-gradient(145deg,#071525 0%,#0f2438 50%,#162b42 100%);color:#fff;padding:20px;}
+.focus.on{display:flex;flex-direction:column;}
+.focus-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:10px;}
+.focus-badge{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--accent);font-weight:800;}
+.focus-task{font-size:22px;font-weight:900;line-height:1.3;margin-bottom:4px;}
+.focus-meta{font-size:12px;opacity:.7;}
+.focus-timer{margin:auto;font-size:90px;font-weight:900;letter-spacing:2px;color:var(--accent);line-height:1;}
+.focus-acts{display:flex;gap:10px;justify-content:center;align-items:center;}
+.btn[disabled]{opacity:.45;cursor:not-allowed;}
 
 /* ALERTS */
 .alt{padding:10px 13px;border-radius:9px;font-size:12px;margin-bottom:11px;display:flex;gap:8px;align-items:start;}
@@ -489,6 +498,20 @@ tr:hover td{background:#fafbfc;}
 
 <!-- MODAL -->
 <div id="mo" class="mo"><div class="mo-box" id="moInner"></div></div>
+<div id="focusMode" class="focus">
+  <div class="focus-hd">
+    <div>
+      <div class="focus-badge">Focus Mode</div>
+      <div class="focus-task" id="focusTitle">Task</div>
+      <div class="focus-meta" id="focusMeta">Topic</div>
+    </div>
+    <button class="btn btn-gh" onclick="exitFocusEarly()">Exit</button>
+  </div>
+  <div class="focus-timer" id="focusTimer">00:00</div>
+  <div class="focus-acts">
+    <button class="btn btn-ac" style="padding:11px 18px;font-size:14px" onclick="completeActiveTask()">✅ Complete</button>
+  </div>
+</div>
 
 <!-- APP -->
 <div id="app">
@@ -555,12 +578,21 @@ const D={
   ],
   skipReasons:{tooD:4,noTime:2,feeling:3,knew:1},
   tasks:[
-    {id:0,time:'6:30 AM',sub:'Reasoning',topic:'Coding-Decoding — Advanced Practice',dur:'40 min',type:'study',color:'#0891b2',done:true,skipped:false,inprog:false},
-    {id:1,time:'7:15 AM',sub:'Reasoning',topic:'Micro-quiz: Coding-Decoding (3 Qs)',dur:'10 min',type:'quiz',color:'#7c3aed',done:true,skipped:false,inprog:false},
-    {id:2,time:'8:00 PM',sub:'English',topic:'Synonyms & Antonyms — SSC Wordlist',dur:'45 min',type:'study',color:'#7c3aed',done:false,skipped:false,inprog:false},
-    {id:3,time:'8:50 PM',sub:'Quantitative',topic:'Algebra: Word Problems — Translation Method',dur:'35 min',type:'study',color:'#2563eb',done:false,skipped:false,inprog:false},
-    {id:4,time:'9:30 PM',sub:'Mock Test',topic:'Quant Sectional — Algebra & Percentage',dur:'25 min',type:'mock',color:'#7c3aed',done:false,skipped:false,inprog:false},
-    {id:5,time:'10:00 PM',sub:'GK',topic:'Indian History: Modern Period (1757-1857)',dur:'25 min',type:'study',color:'#059669',done:false,skipped:false,inprog:false},
+    {id:0,time:'6:30 AM',sub:'Reasoning',topic:'Coding-Decoding — Advanced Practice',dur:'40 min',type:'study',color:'#0891b2',status:'completed',task_id:'T-0',user_id:'U-RAHUL',suggested_time:40,actual_time:38,started_at:'2026-03-20T06:30:00.000Z',completed_at:'2026-03-20T07:08:00.000Z',skipped_reason:'',early_completion_reason:'',interruption_flag:false},
+    {id:1,time:'7:15 AM',sub:'Reasoning',topic:'Micro-quiz: Coding-Decoding (3 Qs)',dur:'10 min',type:'quiz',color:'#7c3aed',status:'completed',task_id:'T-1',user_id:'U-RAHUL',suggested_time:10,actual_time:9,started_at:'2026-03-20T07:15:00.000Z',completed_at:'2026-03-20T07:24:00.000Z',skipped_reason:'',early_completion_reason:'already_knew',interruption_flag:false},
+    {id:2,time:'8:00 PM',sub:'English',topic:'Synonyms & Antonyms — SSC Wordlist',dur:'45 min',type:'study',color:'#7c3aed',status:'pending',task_id:'T-2',user_id:'U-RAHUL',suggested_time:45,actual_time:0,started_at:'',completed_at:'',skipped_reason:'',early_completion_reason:'',interruption_flag:false},
+    {id:3,time:'8:50 PM',sub:'Quantitative',topic:'Algebra: Word Problems — Translation Method',dur:'35 min',type:'study',color:'#2563eb',status:'pending',task_id:'T-3',user_id:'U-RAHUL',suggested_time:35,actual_time:0,started_at:'',completed_at:'',skipped_reason:'',early_completion_reason:'',interruption_flag:false},
+    {id:4,time:'9:30 PM',sub:'Mock Test',topic:'Quant Sectional — Algebra & Percentage',dur:'25 min',type:'mock',color:'#7c3aed',status:'pending',task_id:'T-4',user_id:'U-RAHUL',suggested_time:25,actual_time:0,started_at:'',completed_at:'',skipped_reason:'',early_completion_reason:'',interruption_flag:false},
+    {id:5,time:'10:00 PM',sub:'GK',topic:'Indian History: Modern Period (1757-1857)',dur:'25 min',type:'study',color:'#059669',status:'pending',task_id:'T-5',user_id:'U-RAHUL',suggested_time:25,actual_time:0,started_at:'',completed_at:'',skipped_reason:'',early_completion_reason:'',interruption_flag:false},
+  ],
+  taskLogs:[
+    {task_id:'T-0',event:'started',at:'2026-03-20T06:30:00.000Z'},
+    {task_id:'T-0',event:'completed',at:'2026-03-20T07:08:00.000Z',actual_time:38,suggested_time:40},
+    {task_id:'T-1',event:'started',at:'2026-03-20T07:15:00.000Z'},
+    {task_id:'T-1',event:'completed',at:'2026-03-20T07:24:00.000Z',actual_time:9,suggested_time:10,early_completion_reason:'already_knew'},
+    {task_id:'T-X1',event:'skipped',at:'2026-03-19T20:00:00.000Z',skip_reason:'too_difficult'},
+    {task_id:'T-X2',event:'skipped',at:'2026-03-18T20:00:00.000Z',skip_reason:'not_enough_time'},
+    {task_id:'T-X3',event:'interrupted',at:'2026-03-17T21:00:00.000Z',actual_time:11,suggested_time:30},
   ],
   tests:[
     {id:'T1',name:'SSC CGL Full Mock #4',date:'20 Mar',score:74,total:200,rank:842,tr:12450,cor:74,wr:22,sk:4,secs:{Quant:{s:22,t:50},Reasoning:{s:28,t:50},English:{s:14,t:50},GK:{s:10,t:50}}},
@@ -605,6 +637,80 @@ const D={
 let tAns={},tCurr=0,tTimer,tSecs=1800;
 let caAns={},caTimerInt;
 let chartsInited={};
+let activeTask=null,focusTicker=null,pendingSkipTaskIndex=null,pendingEarlyTaskIndex=null;
+const FOCUS_STATE_KEY='exambhai_active_task_v1';
+
+function nowIso(){return new Date().toISOString();}
+function minsFromMs(ms){return Math.max(0,Math.round(ms/60000));}
+function secsFromMs(ms){return Math.max(0,Math.floor(ms/1000));}
+function fmtMMSS(totalSecs){const m=Math.floor(totalSecs/60),s=totalSecs%60;return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
+function isTaskDone(t){return t.status==='completed';}
+function isTaskSkipped(t){return t.status==='skipped';}
+function isTaskInProgress(t){return t.status==='in-progress';}
+function isTaskInterrupted(t){return t.status==='interrupted';}
+function normalizeTask(t,idx){
+  if(!t.task_id)t.task_id=`T-${idx}`;
+  if(!t.user_id)t.user_id='U-RAHUL';
+  if(!Number.isFinite(Number(t.suggested_time)))t.suggested_time=parseInt(String(t.dur||'0').match(/\d+/)?.[0]||'0',10);
+  if(!Number.isFinite(Number(t.actual_time)))t.actual_time=0;
+  if(!('interruption_flag' in t))t.interruption_flag=false;
+  if(!('skipped_reason' in t))t.skipped_reason='';
+  if(!('early_completion_reason' in t))t.early_completion_reason='';
+  if(!t.started_at)t.started_at='';
+  if(!t.completed_at)t.completed_at='';
+  if(!t.status){
+    if(t.done)t.status='completed';
+    else if(t.skipped)t.status='skipped';
+    else if(t.inprog)t.status='in-progress';
+    else t.status='pending';
+  }
+  return t;
+}
+function saveTasks(){try{localStorage.setItem('exambhai_tasks_v1',JSON.stringify(D.tasks));localStorage.setItem('exambhai_task_logs_v1',JSON.stringify(D.taskLogs||[]));}catch(e){}}
+function loadTasks(){
+  try{
+    const tRaw=localStorage.getItem('exambhai_tasks_v1');
+    const lRaw=localStorage.getItem('exambhai_task_logs_v1');
+    if(tRaw){const parsed=JSON.parse(tRaw);if(Array.isArray(parsed)&&parsed.length===D.tasks.length)D.tasks=parsed;}
+    if(lRaw){const parsedLogs=JSON.parse(lRaw);if(Array.isArray(parsedLogs))D.taskLogs=parsedLogs;}
+  }catch(e){}
+  D.tasks=D.tasks.map((t,idx)=>normalizeTask(t,idx));
+}
+function loadFocusState(){try{const raw=localStorage.getItem(FOCUS_STATE_KEY);return raw?JSON.parse(raw):null;}catch(e){return null;}}
+function saveFocusState(state){try{if(state)localStorage.setItem(FOCUS_STATE_KEY,JSON.stringify(state));else localStorage.removeItem(FOCUS_STATE_KEY);}catch(e){}}
+function getElapsedSecs(task){if(!task||!task.started_at)return 0;const start=Date.parse(task.started_at);if(Number.isNaN(start))return 0;return secsFromMs(Date.now()-start);}
+function updateFocusTimer(){const el=document.getElementById('focusTimer');if(!el||!activeTask)return;const t=D.tasks[activeTask.taskIndex];if(!t)return;el.textContent=fmtMMSS(getElapsedSecs(t));}
+function startFocusTicker(){clearInterval(focusTicker);focusTicker=setInterval(updateFocusTimer,1000);}
+function stopFocusTicker(){clearInterval(focusTicker);focusTicker=null;}
+function openFocus(taskIndex){
+  const t=D.tasks[taskIndex];if(!t)return;
+  activeTask={taskIndex};
+  const focus=document.getElementById('focusMode');if(focus)focus.classList.add('on');
+  const ttl=document.getElementById('focusTitle');if(ttl)ttl.textContent=t.topic;
+  const meta=document.getElementById('focusMeta');if(meta)meta.textContent=`${t.sub} · Suggested ${t.suggested_time} min`;
+  updateFocusTimer();startFocusTicker();
+}
+function closeFocus(){stopFocusTicker();activeTask=null;const focus=document.getElementById('focusMode');if(focus)focus.classList.remove('on');}
+function getTaskAnalytics(windowDays=7){
+  const now=Date.now(),cutoff=now-windowDays*24*60*60*1000;
+  const logs=(D.taskLogs||[]).filter(l=>Date.parse(l.at||0)>=cutoff);
+  const started=logs.filter(l=>l.event==='started').length;
+  const completed=logs.filter(l=>l.event==='completed').length;
+  const skipped=logs.filter(l=>l.event==='skipped');
+  const interrupted=logs.filter(l=>l.event==='interrupted');
+  const early=logs.filter(l=>l.event==='completed'&&Number(l.actual_time)<Number(l.suggested_time)).length;
+  const compRate=started?Math.round((completed/started)*100):0;
+  const skipReasonMap={too_difficult:0,already_knew:0,not_enough_time:0,feeling_low:0,other:0};
+  skipped.forEach(s=>{if(skipReasonMap[s.skip_reason]!==undefined)skipReasonMap[s.skip_reason]++;else skipReasonMap.other++;});
+  const completedLogs=logs.filter(l=>l.event==='completed'&&Number.isFinite(Number(l.actual_time))&&Number.isFinite(Number(l.suggested_time)));
+  const timeDelta=completedLogs.length?Math.round(completedLogs.reduce((a,l)=>a+(Number(l.actual_time)-Number(l.suggested_time)),0)/completedLogs.length):0;
+  const insights=[];
+  if(skipReasonMap.too_difficult>=2)insights.push('User skips difficult tasks.');
+  if(early>=2)insights.push('User finishes early often.');
+  if(interrupted.length>=1)insights.push('Interrupted sessions detected; break tasks into smaller chunks.');
+  if(!insights.length)insights.push('Study behavior is stable this week.');
+  return {started,completed,compRate,skippedCount:skipped.length,interruptedCount:interrupted.length,earlyCount:early,skipReasonMap,timeDelta,insights};
+}
 
 /* ═══════ ONBOARDING ═══════ */
 function pickEx(el,n){document.querySelectorAll('.eo').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');}
@@ -612,9 +718,12 @@ function obGo(n){document.querySelectorAll('.ob-step').forEach(s=>s.classList.re
 function selA(g){document.querySelectorAll(`input[data-g="${g}"]`).forEach(cb=>{cb.checked=true;cb.closest('.ti').classList.add('ck');});}
 document.querySelectorAll('.ti input').forEach(cb=>{cb.addEventListener('change',function(){this.closest('.ti').classList.toggle('ck',this.checked);});});
 function launch(){
+  loadTasks();
   document.getElementById('ob').classList.add('hidden');
   document.getElementById('app').classList.add('on');
   go('home');
+  const persisted=loadFocusState();
+  if(persisted&&Number.isInteger(persisted.taskIndex)&&D.tasks[persisted.taskIndex]&&isTaskInProgress(D.tasks[persisted.taskIndex]))openFocus(persisted.taskIndex);
   setTimeout(()=>showMoodCheckin(),1200);
 }
 
@@ -635,8 +744,20 @@ function toggleNp(){document.getElementById('np').classList.toggle('on');}
 function npT(el,id){document.querySelectorAll('.np-tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.np-body').forEach(b=>b.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');}
 document.addEventListener('click',e=>{if(!e.target.closest('#np')&&!e.target.closest('.bell-w'))document.getElementById('np').classList.remove('on');});
 document.getElementById('mo').addEventListener('click',function(e){if(e.target===this)this.classList.remove('on');});
+window.addEventListener('beforeunload',()=>{
+  if(!activeTask)return;
+  const t=D.tasks[activeTask.taskIndex];if(!t||!isTaskInProgress(t))return;
+  const elapsedMins=minsFromMs(Date.now()-Date.parse(t.started_at||nowIso()));
+  t.actual_time=elapsedMins;t.status='interrupted';t.interruption_flag=true;
+  D.taskLogs.push({task_id:t.task_id,event:'interrupted',at:nowIso(),actual_time:elapsedMins,suggested_time:t.suggested_time});
+  saveTasks();saveFocusState(null);
+});
 function closeMo(){document.getElementById('mo').classList.remove('on');}
 function swTab(el,id){const p=el.closest('.sec')||document.getElementById('mc');p.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));p.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));el.classList.add('on');const t=document.getElementById(id);if(t)t.classList.add('on');}
+window.completeActiveTask=completeActiveTask;
+window.exitFocusEarly=exitFocusEarly;
+window.resumeTask=resumeTask;
+window.submitEarlyCompletionReason=submitEarlyCompletionReason;
 
 /* ═══════ MOOD CHECK-IN ═══════ */
 function showMoodCheckin(){
@@ -681,7 +802,7 @@ const PAGES={
 
 /* HOME */
 home:()=>{
-  const done=D.tasks.filter(t=>t.done).length,total=D.tasks.length,pct=Math.round(done/total*100);
+  const done=D.tasks.filter(t=>isTaskDone(t)).length,total=D.tasks.length,pct=Math.round(done/total*100);
   const moodSet=D.student.mood_today_done;
   return `
 <div class="sr">
@@ -1011,6 +1132,7 @@ results:()=>`
 
 /* ANALYTICS */
 analytics:()=>`
+${(()=>{const a=getTaskAnalytics(7);return `<div class="alt a-i" style="margin-bottom:10px">📊 7-day task analytics: completion ${a.compRate}% · skips ${a.skippedCount} · early completions ${a.earlyCount} · interruptions ${a.interruptedCount}. Avg time delta: ${a.timeDelta>=0?'+':''}${a.timeDelta} min.</div><div class="alt a-p" style="margin-bottom:12px">🤖 Behavioral insight: ${a.insights.join(' ')}</div>`;})()}
 <div class="sr">
   <div class="sc"><div class="sc-i">📊</div><div class="sc-v">62</div><div class="sc-l">Current Readiness</div><div class="sc-c up">▲ +14 in 90d</div></div>
   <div class="sc"><div class="sc-i">⚡</div><div class="sc-v">62%</div><div class="sc-l">Accuracy</div><div class="sc-c up">▲ +3% this week</div></div>
@@ -1291,17 +1413,22 @@ function renderTasks(withActions=true){
   return D.tasks.map((t,i)=>{
     const typeColors={study:'#2563eb',quiz:'#7c3aed',mock:'#db2777',speed:'#ea580c'};
     const typeBadge={study:'📖 Study',quiz:'🧠 Micro-quiz',mock:'📝 Mock Test',speed:'⚡ Speed Drill'};
-    return `<div class="tc-wrap ${t.done?'done':t.skipped?'skipped':''}" id="tc-${i}">
+    const cls=isTaskDone(t)?'done':isTaskSkipped(t)?'skipped':isTaskInProgress(t)?'in-progress':isTaskInterrupted(t)?'overdue':'';
+    return `<div class="tc-wrap ${cls}" id="tc-${i}">
       <div class="tc-bar" style="background:${t.color}"></div>
       <div class="tc-time">${t.time}</div>
       <div class="tc-body">
         <div class="tc-sub" style="color:${t.color}">${t.sub}</div>
         <div class="tc-topic">${t.topic}</div>
-        <div class="tc-meta">⏱ ${t.dur} · <span class="bdg gr" style="font-size:9px">${typeBadge[t.type]||t.type}</span></div>
+        <div class="tc-meta">⏱ ${t.dur} · <span class="bdg gr" style="font-size:9px">${typeBadge[t.type]||t.type}</span> ${isTaskInProgress(t)?'<span class="bdg b" style="margin-left:4px">In Progress</span>':''} ${isTaskInterrupted(t)?'<span class="bdg o" style="margin-left:4px">Interrupted</span>':''}</div>
       </div>
       ${withActions?`<div class="tc-acts">
-        ${t.done?'<span class="bdg g">✅ Done</span>':t.skipped?'<span class="bdg gr">↪ Shifted</span>':`
-          <button class="btn btn-xs btn-gn" onclick="markDone(${i})">✅</button>
+        ${isTaskDone(t)?'<span class="bdg g">✅ Done</span>':isTaskSkipped(t)?'<span class="bdg gr">↪ Shifted</span>':isTaskInProgress(t)?`
+          <button class="btn btn-xs btn-gh" onclick="resumeTask(${i})">⏱</button>
+          <button class="btn btn-xs btn-ac" onclick="completeActiveTask()">✅</button>
+          <button class="btn btn-xs btn-rd" onclick="exitFocusEarly()">⏹</button>
+        `:`
+          <button class="btn btn-xs btn-gn" onclick="markDone(${i})" ${isTaskInterrupted(t)?'disabled':''}>✅</button>
           <button class="btn btn-xs btn-gh" onclick="skipTask(${i})">↪</button>
           <button class="btn btn-xs btn-br" onclick="startTask(${i})">▶</button>
         `}
@@ -1310,24 +1437,61 @@ function renderTasks(withActions=true){
   }).join('');
 }
 
-let taskRefs={};
 function markDone(i){
-  taskRefs[i]=taskRefs[i]||0;
-  taskRefs[i]++;
-  // Check if done too quickly (simulate)
-  if(taskRefs[i]===1&&!D.tasks[i].done){
-    showModal('quickDone',i);
-    return;
-  }
-  D.tasks[i].done=true;D.tasks[i].skipped=false;
-  refreshTasks();
+  const t=D.tasks[i];if(!t||isTaskDone(t)||isTaskSkipped(t)||isTaskInProgress(t))return;
+  startTask(i);
 }
-function confirmDone(i){D.tasks[i].done=true;D.tasks[i].skipped=false;closeMo();refreshTasks();}
 function skipTask(i){showModal('skipReason',i);}
-function confirmSkip(i){D.tasks[i].skipped=true;D.tasks[i].done=false;closeMo();refreshTasks();}
-function startTask(i){showModal('startTask',i);}
+function confirmSkip(i){
+  const t=D.tasks[i],reason=document.getElementById('skipReasonText')?.value?.trim();if(!t||isTaskDone(t))return;
+  if(selectedSkipRI<0){showModal('errorMsg','Please choose a skip reason.');return;}
+  const reasonMap=['too_difficult','already_knew','not_enough_time','feeling_low','other'];
+  const selected=reasonMap[selectedSkipRI]||'other';
+  if(selected==='other'&&!reason){showModal('errorMsg','Please enter skip reason for "Other".');return;}
+  t.status='skipped';t.skipped_reason=selected==='other'?reason:selected;t.completed_at=nowIso();t.started_at=t.started_at||'';t.actual_time=t.actual_time||0;t.early_completion_reason='';t.interruption_flag=false;
+  D.taskLogs.push({task_id:t.task_id,event:'skipped',at:nowIso(),skip_reason:t.skipped_reason});
+  saveTasks();closeMo();refreshTasks();
+}
+function startTask(i){
+  const t=D.tasks[i];if(!t||isTaskDone(t)||isTaskSkipped(t)||isTaskInProgress(t))return;
+  t.status='in-progress';t.started_at=nowIso();t.completed_at='';t.actual_time=0;t.interruption_flag=false;t.skipped_reason='';t.early_completion_reason='';
+  D.taskLogs.push({task_id:t.task_id,event:'started',at:t.started_at,suggested_time:t.suggested_time});
+  saveTasks();saveFocusState({taskIndex:i,started_at:t.started_at});closeMo();openFocus(i);refreshTasks();
+}
+function resumeTask(i){const t=D.tasks[i];if(!t||!isTaskInProgress(t))return;openFocus(i);}
+function completeTaskWithReason(i,reasonKey,otherText=''){
+  const t=D.tasks[i];if(!t||!isTaskInProgress(t))return;
+  t.actual_time=minsFromMs(Date.now()-Date.parse(t.started_at||nowIso()));t.completed_at=nowIso();t.status='completed';t.interruption_flag=false;t.skipped_reason='';
+  if(t.actual_time<t.suggested_time)t.early_completion_reason=reasonKey==='other'?(otherText||'other'):reasonKey;
+  D.taskLogs.push({task_id:t.task_id,event:'completed',at:t.completed_at,actual_time:t.actual_time,suggested_time:t.suggested_time,early_completion_reason:t.early_completion_reason||''});
+  saveTasks();saveFocusState(null);closeFocus();closeMo();refreshTasks();
+}
+function completeActiveTask(){
+  if(!activeTask)return;
+  const i=activeTask.taskIndex,t=D.tasks[i];if(!t||!isTaskInProgress(t))return;
+  const elapsed=minsFromMs(Date.now()-Date.parse(t.started_at||nowIso()));
+  if(elapsed<t.suggested_time){pendingEarlyTaskIndex=i;showModal('earlyComplete',i);return;}
+  completeTaskWithReason(i,'');
+}
+function submitEarlyCompletionReason(){
+  if(pendingEarlyTaskIndex===null)return;
+  const r=document.querySelector('input[name="early-reason"]:checked')?.value||'';
+  const other=document.getElementById('earlyOtherText')?.value?.trim()||'';
+  if(!r){showModal('errorMsg','Please choose why you finished early.');return;}
+  if(r==='other'&&!other){showModal('errorMsg','Please enter reason in Other.');return;}
+  const idx=pendingEarlyTaskIndex;pendingEarlyTaskIndex=null;
+  completeTaskWithReason(idx,r,other);
+}
+function exitFocusEarly(){
+  if(!activeTask)return;
+  const t=D.tasks[activeTask.taskIndex];if(!t||!isTaskInProgress(t))return;
+  t.actual_time=minsFromMs(Date.now()-Date.parse(t.started_at||nowIso()));t.status='interrupted';t.interruption_flag=true;
+  D.taskLogs.push({task_id:t.task_id,event:'interrupted',at:nowIso(),actual_time:t.actual_time,suggested_time:t.suggested_time});
+  saveTasks();saveFocusState(null);closeFocus();refreshTasks();
+}
 function refreshTasks(){
   const el=document.getElementById('task-list');if(el)el.innerHTML=renderTasks(true);
+  saveTasks();
 }
 
 /* ═══════ TEST ENGINE ═══════ */
@@ -1482,17 +1646,19 @@ function showModal(type,data){
     <div id="skip-opts" style="display:flex;flex-direction:column;gap:7px">
       ${[['Too difficult right now','AI topic ko chhotey parts mein todega'],['Already studied this well','Quick 3-question quiz se verify karein?'],['Not enough time today','Longer slot mein reschedule karein'],['Feeling low / unmotivated','AI plan halka kar dega'],['Other reason','Custom note likhein']].map(([r,h],ri)=>`<div class="opt" onclick="selectSkipR(${ri},this)"><div><div style="font-size:12px;font-weight:700">${r}</div><div style="font-size:10px;color:var(--muted)">${h}</div></div></div>`).join('')}
     </div>
-    <input class="fc" placeholder="Optional: kuch aur likhna hai..." style="margin-top:11px;font-size:12px">
+    <input class="fc" id="skipReasonText" placeholder="Other reason (mandatory when Other is selected)" style="margin-top:11px;font-size:12px">
     <div style="display:flex;gap:7px;margin-top:12px">
       <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Cancel</button>
       <button class="btn btn-br" style="flex:1" id="skip-confirm" onclick="confirmSkip(${i})" disabled>Confirm Skip</button>
     </div>`,
 
-    quickDone:i=>`<div class="mo-hd"><h3>🎯 That was quick!</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Task completed in less than expected time. Select one:</div>
-    ${[['✅ Already know this well','Mark as mastered — confidence boost!'],['👁️ Just reviewed (no deep study)','Task stays in plan, light credit'],['🧠 Want a 3-question quiz to confirm?','Validate understanding quickly']].map(([l,h])=>`<div class="opt" style="margin-bottom:7px" onclick="handleQuickDone(${i},'${l}',this)"><div><div style="font-size:13px;font-weight:700">${l}</div><div style="font-size:11px;color:var(--muted)">${h}</div></div></div>`).join('')}
+    earlyComplete:i=>`<div class="mo-hd"><h3>⏱️ Why did you finish early?</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Task: <strong>${D.tasks[i]?.topic||'Task'}</strong> · Suggested: ${D.tasks[i]?.suggested_time||0} min</div>
+    ${[['too_easy','Too easy'],['already_knew','Already knew'],['didnt_feel_like_continuing','Didn’t feel like continuing'],['other','Other']].map(([v,l])=>`<label class="opt" style="margin-bottom:6px"><input type="radio" name="early-reason" value="${v}" style="margin-right:8px">${l}</label>`).join('')}
+    <input class="fc" id="earlyOtherText" placeholder="Other reason (required for Other)" style="margin-top:8px;font-size:12px">
     <div style="display:flex;gap:7px;margin-top:12px">
-      <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Skip Quiz</button>
+      <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Cancel</button>
+      <button class="btn btn-br" style="flex:1" onclick="submitEarlyCompletionReason()">Save & Complete</button>
     </div>`,
 
     startTask:i=>`<div class="mo-hd"><h3>▶ Starting Task</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
@@ -1501,10 +1667,11 @@ function showModal(type,data){
       <div style="font-size:12px;color:var(--muted);margin-bottom:16px">${D.tasks[i]?.dur||''} · ${D.tasks[i]?.sub||''}</div>
       <div style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;text-align:left">
         <div style="font-weight:700;margin-bottom:6px">⏱️ Study Mode</div>
-        <div style="color:var(--muted)">Timer will track your study duration. Mark done when finished. AI verifies with micro-quiz.</div>
+        <div style="color:var(--muted)">Task will open in full-screen focus mode with persistent live timer. Timer recovers after refresh.</div>
       </div>
-      <button class="btn btn-br" style="width:100%;padding:12px" onclick="confirmDone(${i})">✅ Mark as Done Now</button>
+      <button class="btn btn-br" style="width:100%;padding:12px" onclick="startTask(${i})">▶ Start Focus Mode</button>
     </div>`,
+    errorMsg:msg=>`<div class="mo-hd"><h3>⚠️ Action needed</h3><button class="mo-x" onclick="closeMo()">✕</button></div><div style="font-size:13px;color:var(--muted);margin-bottom:12px">${msg||'Please check input.'}</div><button class="btn btn-br" style="width:100%" onclick="closeMo()">OK</button>`,
 
     strategic_skip:`<div class="mo-hd"><h3>⚠️ AI Topic Suggestion</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
     <div style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12px">
@@ -1680,7 +1847,7 @@ let selectedSkipRI=-1;
 function selectSkipR(i,el){selectedSkipRI=i;document.querySelectorAll('#skip-opts .opt').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');const btn=document.getElementById('skip-confirm');if(btn)btn.disabled=false;}
 let selectedFlagI=-1;
 function selectFlag(i,el){selectedFlagI=i;document.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');}
-function handleQuickDone(i,choice,el){document.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');setTimeout(()=>{confirmDone(i);},400);}
+function handleQuickDone(){}
 function submitFlag(){showModal('flagSubmitted');setTimeout(()=>{document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px"><div style="font-size:44px;margin-bottom:10px">✅</div><h3 style="color:var(--green);margin-bottom:8px">Flag Submitted!</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Sarvam 105B AI is re-analyzing this question now. You'll be notified within 5 minutes.</p><div class="alt a-i" style="text-align:left">Expected resolution: ~5 minutes (AI auto-review) or 24 hours (human expert if needed)</div><button class="btn btn-br" style="width:100%;margin-top:11px" onclick="closeMo()">OK</button></div>`;},200);}
 function paySuccess(){closeMo();setTimeout(()=>{document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px"><div style="font-size:48px;margin-bottom:10px">🎉</div><h3 style="color:var(--green);margin-bottom:6px">Payment Successful!</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Welcome to EXAMBHAI Premium! All features unlocked.</p><button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">Start Learning →</button></div>`;document.getElementById('mo').classList.add('on');},200);}
 </script>
