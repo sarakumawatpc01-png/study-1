@@ -17,9 +17,15 @@ router.post('/notifications', (req, res) => {
   const schema = z.object({ title: z.string().min(1), body: z.string().min(1) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid notification payload' });
-  db.prepare('INSERT INTO notifications (user_id, title, body, created_at) VALUES (?, ?, ?, ?)')
-    .run(req.user.id, parsed.data.title, parsed.data.body, new Date().toISOString());
-  res.status(201).json({ ok: true });
+  try {
+    db.prepare('INSERT INTO notifications (user_id, title, body, created_at) VALUES (?, ?, ?, ?)')
+      .run(req.user.id, parsed.data.title, parsed.data.body, new Date().toISOString());
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save notification', e);
+    res.status(500).json({ error: 'Failed to save notification' });
+  }
 });
 
 router.get('/mock-tests', (req, res) => {
@@ -37,9 +43,15 @@ router.post('/mock-tests', (req, res) => {
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid mock test payload' });
-  db.prepare('INSERT INTO mock_tests (user_id, name, score, total, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(req.user.id, parsed.data.name, parsed.data.score, parsed.data.total, new Date().toISOString());
-  res.status(201).json({ ok: true });
+  try {
+    db.prepare('INSERT INTO mock_tests (user_id, name, score, total, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(req.user.id, parsed.data.name, parsed.data.score, parsed.data.total, new Date().toISOString());
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save mock test', e);
+    res.status(500).json({ error: 'Failed to save mock test' });
+  }
 });
 
 router.get('/error-journal', (req, res) => {
@@ -61,10 +73,16 @@ router.post('/error-journal', (req, res) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid error-journal payload' });
   const p = parsed.data;
-  db.prepare(
-    'INSERT INTO error_journal (user_id, topic, question, your_answer, correct_answer, explanation, next_review_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(req.user.id, p.topic, p.question, p.your_answer || null, p.correct_answer, p.explanation, p.next_review_at || null, new Date().toISOString());
-  res.status(201).json({ ok: true });
+  try {
+    db.prepare(
+      'INSERT INTO error_journal (user_id, topic, question, your_answer, correct_answer, explanation, next_review_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(req.user.id, p.topic, p.question, p.your_answer || null, p.correct_answer, p.explanation, p.next_review_at || null, new Date().toISOString());
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save error-journal entry', e);
+    res.status(500).json({ error: 'Failed to save error-journal entry' });
+  }
 });
 
 module.exports = router;

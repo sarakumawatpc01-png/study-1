@@ -652,6 +652,9 @@ async function apiFetch(path,options={}){
   if(!res.ok)throw new Error(data.error||`Request failed: ${res.status}`);
   return data;
 }
+async function apiTry(path,options={},fallback=null){
+  try{return await apiFetch(path,options);}catch(e){return fallback;}
+}
 async function ensureAuth(){
   if(authToken){
     try{
@@ -690,30 +693,34 @@ async function bootstrapTasksFromApi(){
   }catch(e){}
 }
 async function pullServerAnalytics(){
-  try{serverAnalytics=await apiFetch('/analytics/summary');}catch(e){}
+  const data=await apiTry('/analytics/summary',{},null);
+  if(data)serverAnalytics=data;
 }
 async function loadServerProfile(){
-  try{
-    const data=await apiFetch('/profile');
-    if(data?.profile){
-      D.student.mood=data.profile.mood||D.student.mood;
-      D.student.score=Number.isFinite(Number(data.profile.readiness_score))?Number(data.profile.readiness_score):D.student.score;
-    }
-    if(Array.isArray(data?.moods)&&data.moods.length){
-      D.student.mood_today_done=true;
-    }
-  }catch(e){}
+  const data=await apiTry('/profile',{},null);
+  if(!data)return;
+  if(data?.profile){
+    D.student.mood=data.profile.mood||D.student.mood;
+    D.student.score=Number.isFinite(Number(data.profile.readiness_score))?Number(data.profile.readiness_score):D.student.score;
+  }
+  if(Array.isArray(data?.moods)&&data.moods.length){
+    D.student.mood_today_done=true;
+  }
 }
 async function loadServerNotifications(){
-  try{
-    const rows=await apiFetch('/notifications');
-    const el=document.getElementById('np-a');
-    const cnt=document.getElementById('bbn');
-    if(cnt)cnt.textContent=String(rows.filter(r=>!r.read_flag).length||0);
-    if(el&&Array.isArray(rows)&&rows.length){
-      el.innerHTML=rows.map(r=>`<div class="np-it ${r.read_flag?'':'unrd'}"><div class="nit">${r.title}</div><div class="nib">${r.body}</div><div class="nit-t">${new Date(r.created_at).toLocaleString()}</div></div>`).join('');
-    }
-  }catch(e){}
+  const rows=await apiTry('/notifications',{},[]);
+  const el=document.getElementById('np-a');
+  const cnt=document.getElementById('bbn');
+  if(cnt)cnt.textContent=String(rows.filter(r=>!r.read_flag).length||0);
+  if(el&&Array.isArray(rows)&&rows.length){
+    el.innerHTML=rows.map(r=>`<div class="np-it ${r.read_flag?'':'unrd'}"><div class="nit">${r.title}</div><div class="nib">${r.body}</div><div class="nit-t">${new Date(r.created_at).toLocaleString()}</div></div>`).join('');
+  }
+}
+async function hydrateFromServer(){
+  await bootstrapTasksFromApi();
+  await loadServerProfile();
+  await loadServerNotifications();
+  await pullServerAnalytics();
 }
 
 function nowIso(){return new Date().toISOString();}
@@ -810,10 +817,7 @@ document.querySelectorAll('.ti input').forEach(cb=>{cb.addEventListener('change'
 async function launch(){
   await ensureAuth();
   loadTasks();
-  await bootstrapTasksFromApi();
-  await loadServerProfile();
-  await loadServerNotifications();
-  await pullServerAnalytics();
+  await hydrateFromServer();
   document.getElementById('ob').classList.add('hidden');
   document.getElementById('app').classList.add('on');
   go('home');
@@ -837,7 +841,8 @@ function go(sec){
 }
 function toggleNp(){document.getElementById('np').classList.toggle('on');}
 async function pushNotification(title,body){
-  try{await apiFetch('/notifications',{method:'POST',body:JSON.stringify({title,body})});await loadServerNotifications();}catch(e){}
+  const saved=await apiTry('/notifications',{method:'POST',body:JSON.stringify({title,body})},null);
+  if(saved)await loadServerNotifications();
 }
 function npT(el,id){document.querySelectorAll('.np-tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.np-body').forEach(b=>b.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');}
 document.addEventListener('click',e=>{if(!e.target.closest('#np')&&!e.target.closest('.bell-w'))document.getElementById('np').classList.remove('on');});
@@ -1657,19 +1662,18 @@ function startTT(){
   clearInterval(_tT);
   _tT=setInterval(()=>{tSecs--;const el=document.getElementById('ttime');if(el){const m=Math.floor(tSecs/60),s=tSecs%60;el.textContent=`${m}:${s.toString().padStart(2,'0')}`;if(tSecs<120)el.style.color='#ef4444';}if(tSecs<=0){clearInterval(_tT);submitTest();}},1000);
 }
-function submitTest(){
+async function submitTest(){
   clearInterval(_tT);
   let cor=0,wr=0,sk=0;
   D.testQs.forEach((q,i)=>{if(tAns[i]===undefined)sk++;else if(tAns[i]===q.ans)cor++;else wr++;});
   const sc=cor*2-wr*.5;
-  try{apiFetch('/mock-tests',{method:'POST',body:JSON.stringify({name:'Live Mock Test',score:Math.max(0,Math.round(sc)),total:D.testQs.length*2})});}catch(e){}
-  try{
-    D.testQs.forEach((q,i)=>{
-      if(tAns[i]!==undefined&&tAns[i]!==q.ans){
-        apiFetch('/error-journal',{method:'POST',body:JSON.stringify({topic:q.top,question:q.q,your_answer:String(q.opts[tAns[i]]||''),correct_answer:String(q.opts[q.ans]),explanation:q.expl,next_review_at:new Date(Date.now()+7*24*60*60*1000).toISOString()})});
-      }
-    });
-  }catch(e){}
+  const writes=[apiTry('/mock-tests',{method:'POST',body:JSON.stringify({name:'Live Mock Test',score:Math.max(0,Math.round(sc)),total:D.testQs.length*2})},null)];
+  D.testQs.forEach((q,i)=>{
+    if(tAns[i]!==undefined&&tAns[i]!==q.ans){
+      writes.push(apiTry('/error-journal',{method:'POST',body:JSON.stringify({topic:q.top,question:q.q,your_answer:String(q.opts[tAns[i]]||''),correct_answer:String(q.opts[q.ans]),explanation:q.expl,next_review_at:new Date(Date.now()+7*24*60*60*1000).toISOString()})},null));
+    }
+  });
+  await Promise.allSettled(writes);
   document.getElementById('moInner').innerHTML=`
   <div class="mo-hd"><h3>✅ Test Complete</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
   <div class="rs-big"><div style="font-size:11px;opacity:.5;margin-bottom:3px">Test Score</div>
