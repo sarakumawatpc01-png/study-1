@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EXAMBHAI — India's Most Intelligent Exam Prep Platform</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="/vendor/chart.js"></script>
 <style>
 :root{
   --brand:#1a3a5c;--brand2:#0f2438;--accent:#f59e0b;--accent2:#fbbf24;
@@ -638,7 +638,90 @@ let tAns={},tCurr=0,tTimer,tSecs=1800;
 let caAns={},caTimerInt;
 let chartsInited={};
 let activeTask=null,focusTicker=null,pendingSkipTaskIndex=null,pendingEarlyTaskIndex=null;
+let authToken=localStorage.getItem('study_token')||'';
+let currentUser=null;
+let serverAnalytics=null;
 const FOCUS_STATE_KEY='exambhai_active_task_v1';
+const API_BASE='/api';
+
+async function apiFetch(path,options={}){
+  const headers={'Content-Type':'application/json',...(options.headers||{})};
+  if(authToken)headers.Authorization=`Bearer ${authToken}`;
+  const res=await fetch(`${API_BASE}${path}`,{...options,headers});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(data.error||`Request failed: ${res.status}`);
+  return data;
+}
+async function apiTry(path,options={},fallback=null){
+  try{return await apiFetch(path,options);}catch(e){return fallback;}
+}
+async function ensureAuth(){
+  if(authToken){
+    try{
+      currentUser=await apiFetch('/auth/me');
+      return currentUser;
+    }catch(e){}
+  }
+  const demoEmail=localStorage.getItem('study_demo_email')||`rahul.${Date.now()}@demo.local`;
+  const payload={email:demoEmail,password:'StrongPass123',name:'Rahul Kumar',exam:'SSC CGL 2026'};
+  try{
+    const login=await apiFetch('/auth/login',{method:'POST',body:JSON.stringify({email:payload.email,password:payload.password})});
+    authToken=login.token;localStorage.setItem('study_token',authToken);currentUser=login.user;return currentUser;
+  }catch(e){
+    const signup=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify(payload)});
+    authToken=signup.token;localStorage.setItem('study_token',authToken);localStorage.setItem('study_demo_email',demoEmail);currentUser=signup.user;return currentUser;
+  }
+}
+async function bootstrapTasksFromApi(){
+  try{
+    const remote=await apiFetch('/tasks');
+    const byId=Object.fromEntries(remote.map(t=>[t.task_id,t]));
+    for(const t of D.tasks){
+      normalizeTask(t,t.id);
+      if(!byId[t.task_id]){
+        await apiFetch('/tasks',{method:'POST',body:JSON.stringify({task_id:t.task_id,title:t.topic,topic:t.sub,suggested_time:t.suggested_time})});
+      }
+    }
+    const synced=await apiFetch('/tasks');
+    const syncById=Object.fromEntries(synced.map(t=>[t.task_id,t]));
+    D.tasks=D.tasks.map((t,idx)=>{
+      const r=syncById[t.task_id];
+      if(!r)return t;
+      return {...t,status:r.status,suggested_time:r.suggested_time,actual_time:r.actual_time||0,started_at:r.started_at||'',completed_at:r.completed_at||'',skipped_reason:r.skipped_reason||'',early_completion_reason:r.early_completion_reason||'',interruption_flag:!!r.interruption_flag,task_id:r.task_id,user_id:String(r.user_id||t.user_id)};
+    });
+    saveTasks();
+  }catch(e){}
+}
+async function pullServerAnalytics(){
+  const data=await apiTry('/analytics/summary',{},null);
+  if(data)serverAnalytics=data;
+}
+async function loadServerProfile(){
+  const data=await apiTry('/profile',{},null);
+  if(!data)return;
+  if(data?.profile){
+    D.student.mood=data.profile.mood||D.student.mood;
+    D.student.score=Number.isFinite(Number(data.profile.readiness_score))?Number(data.profile.readiness_score):D.student.score;
+  }
+  if(Array.isArray(data?.moods)&&data.moods.length){
+    D.student.mood_today_done=true;
+  }
+}
+async function loadServerNotifications(){
+  const rows=await apiTry('/notifications',{},[]);
+  const el=document.getElementById('np-a');
+  const cnt=document.getElementById('bbn');
+  if(cnt)cnt.textContent=String(rows.filter(r=>!r.read_flag).length||0);
+  if(el&&Array.isArray(rows)&&rows.length){
+    el.innerHTML=rows.map(r=>`<div class="np-it ${r.read_flag?'':'unrd'}"><div class="nit">${r.title}</div><div class="nib">${r.body}</div><div class="nit-t">${new Date(r.created_at).toLocaleString()}</div></div>`).join('');
+  }
+}
+async function hydrateFromServer(){
+  await bootstrapTasksFromApi();
+  await loadServerProfile();
+  await loadServerNotifications();
+  await pullServerAnalytics();
+}
 
 function nowIso(){return new Date().toISOString();}
 function minsFromMs(ms){return Math.max(0,Math.round(ms/60000));}
@@ -666,7 +749,14 @@ function normalizeTask(t,idx){
   }
   return t;
 }
-function saveTasks(){try{localStorage.setItem('exambhai_tasks_v1',JSON.stringify(D.tasks));localStorage.setItem('exambhai_task_logs_v1',JSON.stringify(D.taskLogs||[]));}catch(e){}}
+function saveTasks(){
+  try{
+    localStorage.setItem('exambhai_tasks_v1',JSON.stringify(D.tasks));
+    localStorage.setItem('exambhai_task_logs_v1',JSON.stringify(D.taskLogs||[]));
+  }catch(e){
+    console.error('Failed to save tasks locally',e);
+  }
+}
 function loadTasks(){
   try{
     const tRaw=localStorage.getItem('exambhai_tasks_v1');
@@ -677,7 +767,14 @@ function loadTasks(){
   D.tasks=D.tasks.map((t,idx)=>normalizeTask(t,idx));
 }
 function loadFocusState(){try{const raw=localStorage.getItem(FOCUS_STATE_KEY);return raw?JSON.parse(raw):null;}catch(e){return null;}}
-function saveFocusState(state){try{if(state)localStorage.setItem(FOCUS_STATE_KEY,JSON.stringify(state));else localStorage.removeItem(FOCUS_STATE_KEY);}catch(e){}}
+function saveFocusState(state){
+  try{
+    if(state)localStorage.setItem(FOCUS_STATE_KEY,JSON.stringify(state));
+    else localStorage.removeItem(FOCUS_STATE_KEY);
+  }catch(e){
+    console.error('Failed to persist focus state',e);
+  }
+}
 function getElapsedSecs(task){if(!task||!task.started_at)return 0;const start=Date.parse(task.started_at);if(Number.isNaN(start))return 0;return secsFromMs(Date.now()-start);}
 function updateFocusTimer(){const el=document.getElementById('focusTimer');if(!el||!activeTask)return;const t=D.tasks[activeTask.taskIndex];if(!t)return;el.textContent=fmtMMSS(getElapsedSecs(t));}
 function startFocusTicker(){clearInterval(focusTicker);focusTicker=setInterval(updateFocusTimer,1000);}
@@ -717,8 +814,10 @@ function pickEx(el,n){document.querySelectorAll('.eo').forEach(e=>e.classList.re
 function obGo(n){document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('on'));document.getElementById('os'+n).classList.add('on');}
 function selA(g){document.querySelectorAll(`input[data-g="${g}"]`).forEach(cb=>{cb.checked=true;cb.closest('.ti').classList.add('ck');});}
 document.querySelectorAll('.ti input').forEach(cb=>{cb.addEventListener('change',function(){this.closest('.ti').classList.toggle('ck',this.checked);});});
-function launch(){
+async function launch(){
+  await ensureAuth();
   loadTasks();
+  await hydrateFromServer();
   document.getElementById('ob').classList.add('hidden');
   document.getElementById('app').classList.add('on');
   go('home');
@@ -741,6 +840,10 @@ function go(sec){
   if(sec==='profile')setTimeout(initProfileChart,100);
 }
 function toggleNp(){document.getElementById('np').classList.toggle('on');}
+async function pushNotification(title,body){
+  const saved=await apiTry('/notifications',{method:'POST',body:JSON.stringify({title,body})},null);
+  if(saved)await loadServerNotifications();
+}
 function npT(el,id){document.querySelectorAll('.np-tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.np-body').forEach(b=>b.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');}
 document.addEventListener('click',e=>{if(!e.target.closest('#np')&&!e.target.closest('.bell-w'))document.getElementById('np').classList.remove('on');});
 document.getElementById('mo').addEventListener('click',function(e){if(e.target===this)this.classList.remove('on');});
@@ -750,6 +853,10 @@ window.addEventListener('beforeunload',()=>{
   const elapsedMins=minsFromMs(Date.now()-Date.parse(t.started_at||nowIso()));
   t.actual_time=elapsedMins;t.status='interrupted';t.interruption_flag=true;
   D.taskLogs.push({task_id:t.task_id,event:'interrupted',at:nowIso(),actual_time:elapsedMins,suggested_time:t.suggested_time});
+  if(authToken){
+    const payload=JSON.stringify({actual_time:elapsedMins});
+    navigator.sendBeacon(`${API_BASE}/tasks/${encodeURIComponent(t.task_id)}/interrupt`,new Blob([payload],{type:'application/json'}));
+  }
   saveTasks();saveFocusState(null);
 });
 function closeMo(){document.getElementById('mo').classList.remove('on');}
@@ -785,8 +892,14 @@ function selectMood(v,l,el){
   el.classList.add('sel');
   document.getElementById('mood-submit').disabled=false;
 }
-function submitMood(){
+async function submitMood(){
   D.student.mood_today_done=true;
+  const moodLabel={optimal:'Calm & Focused',neutral:'Normal / Okay',stressed:'Stressed',very_stressed:'Very Stressed',low_energy:'Low Energy / Tired'};
+  D.student.mood=moodLabel[selectedMoodV]||D.student.mood;
+  try{
+    const note=document.querySelector('#moInner input.fc')?.value?.trim()||'';
+    await apiFetch('/profile/mood',{method:'POST',body:JSON.stringify({mood:D.student.mood,note:note||null})});
+  }catch(e){}
   const msgs={optimal:"Focus accha hai! Chalo aaj ek weak topic challenge karein. 🚀",neutral:"Chalo aaj ka plan shuru karte hain. Step by step, aap kar lenge! 💪",stressed:"Thoda pressure hai? Pehle ek aasaan topic se confidence banao. 💙",very_stressed:"Lagta hai bahut pressure hai. Aaj thoda light chalo — kal fresh start. 🤗",low_energy:"Energy kam hai toh chhote sessions karo. 20 min padh ke 5 min break lo. 🙏"};
   document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px">
     <div style="font-size:44px;margin-bottom:10px">${selectedMoodV==='optimal'?'🚀':selectedMoodV==='very_stressed'?'🤗':selectedMoodV==='low_energy'?'🙏':'💙'}</div>
@@ -1132,7 +1245,7 @@ results:()=>`
 
 /* ANALYTICS */
 analytics:()=>`
-${(()=>{const a=getTaskAnalytics(7);return `<div class="alt a-i" style="margin-bottom:10px">📊 7-day task analytics: completion ${a.compRate}% · skips ${a.skippedCount} · early completions ${a.earlyCount} · interruptions ${a.interruptedCount}. Avg time delta: ${a.timeDelta>=0?'+':''}${a.timeDelta} min.</div><div class="alt a-p" style="margin-bottom:12px">🤖 Behavioral insight: ${a.insights.join(' ')}</div>`;})()}
+${(()=>{const localA=getTaskAnalytics(7);const a=serverAnalytics?.weekly?{compRate:serverAnalytics.weekly.completionRate,skippedCount:serverAnalytics.weekly.skipFrequency,earlyCount:serverAnalytics.weekly.earlyCompletionFrequency,interruptedCount:serverAnalytics.weekly.interruptedSessions,timeDelta:serverAnalytics.weekly.averageTimeVsSuggestedMinutes,insights:serverAnalytics.weekly.insights}:localA;return `<div class="alt a-i" style="margin-bottom:10px">📊 7-day task analytics: completion ${a.compRate}% · skips ${a.skippedCount} · early completions ${a.earlyCount} · interruptions ${a.interruptedCount}. Avg time delta: ${a.timeDelta>=0?'+':''}${a.timeDelta} min.</div><div class="alt a-p" style="margin-bottom:12px">🤖 Behavioral insight: ${a.insights.join(' ')}</div>`;})()}
 <div class="sr">
   <div class="sc"><div class="sc-i">📊</div><div class="sc-v">62</div><div class="sc-l">Current Readiness</div><div class="sc-c up">▲ +14 in 90d</div></div>
   <div class="sc"><div class="sc-i">⚡</div><div class="sc-v">62%</div><div class="sc-l">Accuracy</div><div class="sc-c up">▲ +3% this week</div></div>
@@ -1442,7 +1555,7 @@ function markDone(i){
   startTask(i);
 }
 function skipTask(i){showModal('skipReason',i);}
-function confirmSkip(i){
+async function confirmSkip(i){
   const t=D.tasks[i],reason=document.getElementById('skipReasonText')?.value?.trim();if(!t||isTaskDone(t))return;
   if(selectedSkipRI<0){showModal('errorMsg','Please choose a skip reason.');return;}
   const reasonMap=['too_difficult','already_knew','not_enough_time','feeling_low','other'];
@@ -1450,20 +1563,28 @@ function confirmSkip(i){
   if(selected==='other'&&!reason){showModal('errorMsg','Please enter skip reason for "Other".');return;}
   t.status='skipped';t.skipped_reason=selected==='other'?reason:selected;t.completed_at=nowIso();t.started_at=t.started_at||'';t.actual_time=t.actual_time||0;t.early_completion_reason='';t.interruption_flag=false;
   D.taskLogs.push({task_id:t.task_id,event:'skipped',at:nowIso(),skip_reason:t.skipped_reason});
+  try{await apiFetch(`/tasks/${encodeURIComponent(t.task_id)}/skip`,{method:'POST',body:JSON.stringify({reason:t.skipped_reason})});await pullServerAnalytics();}catch(e){}
+  pushNotification('Task skipped',`${t.topic} skipped: ${t.skipped_reason}`);
   saveTasks();closeMo();refreshTasks();
 }
-function startTask(i){
+async function startTask(i){
   const t=D.tasks[i];if(!t||isTaskDone(t)||isTaskSkipped(t)||isTaskInProgress(t))return;
   t.status='in-progress';t.started_at=nowIso();t.completed_at='';t.actual_time=0;t.interruption_flag=false;t.skipped_reason='';t.early_completion_reason='';
   D.taskLogs.push({task_id:t.task_id,event:'started',at:t.started_at,suggested_time:t.suggested_time});
+  try{await apiFetch(`/tasks/${encodeURIComponent(t.task_id)}/start`,{method:'POST'});}catch(e){}
   saveTasks();saveFocusState({taskIndex:i,started_at:t.started_at});closeMo();openFocus(i);refreshTasks();
 }
 function resumeTask(i){const t=D.tasks[i];if(!t||!isTaskInProgress(t))return;openFocus(i);}
-function completeTaskWithReason(i,reasonKey,otherText=''){
+async function completeTaskWithReason(i,reasonKey,otherText=''){
   const t=D.tasks[i];if(!t||!isTaskInProgress(t))return;
   t.actual_time=minsFromMs(Date.now()-Date.parse(t.started_at||nowIso()));t.completed_at=nowIso();t.status='completed';t.interruption_flag=false;t.skipped_reason='';
   if(t.actual_time<t.suggested_time)t.early_completion_reason=reasonKey==='other'?(otherText||'other'):reasonKey;
   D.taskLogs.push({task_id:t.task_id,event:'completed',at:t.completed_at,actual_time:t.actual_time,suggested_time:t.suggested_time,early_completion_reason:t.early_completion_reason||''});
+  try{
+    await apiFetch(`/tasks/${encodeURIComponent(t.task_id)}/complete`,{method:'POST',body:JSON.stringify({actual_time:t.actual_time,early_completion_reason:t.early_completion_reason||null})});
+    await pullServerAnalytics();
+  }catch(e){}
+  pushNotification('Task completed',`${t.topic} completed in ${t.actual_time} min`);
   saveTasks();saveFocusState(null);closeFocus();closeMo();refreshTasks();
 }
 function completeActiveTask(){
@@ -1473,20 +1594,22 @@ function completeActiveTask(){
   if(elapsed<t.suggested_time){pendingEarlyTaskIndex=i;showModal('earlyComplete',i);return;}
   completeTaskWithReason(i,'');
 }
-function submitEarlyCompletionReason(){
+async function submitEarlyCompletionReason(){
   if(pendingEarlyTaskIndex===null)return;
   const r=document.querySelector('input[name="early-reason"]:checked')?.value||'';
   const other=document.getElementById('earlyOtherText')?.value?.trim()||'';
   if(!r){showModal('errorMsg','Please choose why you finished early.');return;}
   if(r==='other'&&!other){showModal('errorMsg','Please enter reason in Other.');return;}
   const idx=pendingEarlyTaskIndex;pendingEarlyTaskIndex=null;
-  completeTaskWithReason(idx,r,other);
+  await completeTaskWithReason(idx,r,other);
 }
-function exitFocusEarly(){
+async function exitFocusEarly(){
   if(!activeTask)return;
   const t=D.tasks[activeTask.taskIndex];if(!t||!isTaskInProgress(t))return;
   t.actual_time=minsFromMs(Date.now()-Date.parse(t.started_at||nowIso()));t.status='interrupted';t.interruption_flag=true;
   D.taskLogs.push({task_id:t.task_id,event:'interrupted',at:nowIso(),actual_time:t.actual_time,suggested_time:t.suggested_time});
+  try{await apiFetch(`/tasks/${encodeURIComponent(t.task_id)}/interrupt`,{method:'POST',body:JSON.stringify({actual_time:t.actual_time})});await pullServerAnalytics();}catch(e){}
+  pushNotification('Task interrupted',`${t.topic} interrupted at ${t.actual_time} min`);
   saveTasks();saveFocusState(null);closeFocus();refreshTasks();
 }
 function refreshTasks(){
@@ -1539,11 +1662,18 @@ function startTT(){
   clearInterval(_tT);
   _tT=setInterval(()=>{tSecs--;const el=document.getElementById('ttime');if(el){const m=Math.floor(tSecs/60),s=tSecs%60;el.textContent=`${m}:${s.toString().padStart(2,'0')}`;if(tSecs<120)el.style.color='#ef4444';}if(tSecs<=0){clearInterval(_tT);submitTest();}},1000);
 }
-function submitTest(){
+async function submitTest(){
   clearInterval(_tT);
   let cor=0,wr=0,sk=0;
   D.testQs.forEach((q,i)=>{if(tAns[i]===undefined)sk++;else if(tAns[i]===q.ans)cor++;else wr++;});
   const sc=cor*2-wr*.5;
+  const writes=[apiTry('/mock-tests',{method:'POST',body:JSON.stringify({name:'Live Mock Test',score:Math.max(0,Math.round(sc)),total:D.testQs.length*2})},null)];
+  D.testQs.forEach((q,i)=>{
+    if(tAns[i]!==undefined&&tAns[i]!==q.ans){
+      writes.push(apiTry('/error-journal',{method:'POST',body:JSON.stringify({topic:q.top,question:q.q,your_answer:String(q.opts[tAns[i]]||''),correct_answer:String(q.opts[q.ans]),explanation:q.expl,next_review_at:new Date(Date.now()+7*24*60*60*1000).toISOString()})},null));
+    }
+  });
+  await Promise.allSettled(writes);
   document.getElementById('moInner').innerHTML=`
   <div class="mo-hd"><h3>✅ Test Complete</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
   <div class="rs-big"><div style="font-size:11px;opacity:.5;margin-bottom:3px">Test Score</div>
