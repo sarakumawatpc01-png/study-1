@@ -36,6 +36,9 @@ safeExec("ALTER TABLE reports ADD COLUMN assigned_to INTEGER;");
 safeExec("ALTER TABLE reports ADD COLUMN sla_due_at TEXT;");
 safeExec("ALTER TABLE reports ADD COLUMN resolution_template TEXT;");
 safeExec("ALTER TABLE reports ADD COLUMN internal_note TEXT;");
+safeExec("ALTER TABLE webhook_events ADD COLUMN provider TEXT;");
+safeExec("ALTER TABLE webhook_events ADD COLUMN event_id TEXT;");
+safeExec("ALTER TABLE webhook_events ADD COLUMN signature_valid INTEGER NOT NULL DEFAULT 0;");
 
 db.prepare(
   'INSERT OR IGNORE INTO role_permissions (role, permissions_json, updated_at) VALUES (?, ?, ?)'
@@ -56,6 +59,10 @@ db.prepare(
     'ai:manage',
     'api:manage',
     'ops:manage',
+    'payments:settings',
+    'payments:test',
+    'payments:webhooks:retry',
+    'payments:webhooks:validate',
     'support:manage',
   ]),
   new Date().toISOString()
@@ -84,6 +91,23 @@ db.prepare(
 db.prepare(
   'INSERT OR IGNORE INTO retention_policies (policy_key, keep_days, enabled, updated_at) VALUES (?, ?, 1, ?)'
 ).run('audit_log', 365, new Date().toISOString());
+
+function ensureRolePermissions(role, requiredPermissions) {
+  const row = db.prepare('SELECT permissions_json FROM role_permissions WHERE role = ?').get(role);
+  if (!row) return;
+  let existing = [];
+  try {
+    existing = JSON.parse(row.permissions_json || '[]');
+  } catch (_err) {
+    existing = [];
+  }
+  if (existing.includes('*')) return;
+  const merged = Array.from(new Set([...existing, ...requiredPermissions]));
+  db.prepare('UPDATE role_permissions SET permissions_json = ?, updated_at = ? WHERE role = ?')
+    .run(JSON.stringify(merged), new Date().toISOString(), role);
+}
+
+ensureRolePermissions('admin', ['payments:settings', 'payments:test', 'payments:webhooks:retry', 'payments:webhooks:validate']);
 
 db.__path = dbPath;
 

@@ -903,6 +903,7 @@ function selA(g){document.querySelectorAll(`input[data-g="${g}"]`).forEach(cb=>{
 document.querySelectorAll('.ti input').forEach(cb=>{cb.addEventListener('change',function(){this.closest('.ti').classList.toggle('ck',this.checked);});});
 async function launch(){
   await ensureAuth();
+  renderAdminNav();
   loadTasks();
   await hydrateFromServer();
   document.getElementById('ob').classList.add('hidden');
@@ -941,10 +942,12 @@ async function loadAdminApiErrors(){return apiTry('/admin/api/errors',{},[]);}
 async function loadAdminApiRequests(){return apiTry('/admin/api/requests',{},[]);}
 async function loadAdminFailedWebhooks(){return apiTry('/admin/webhooks/failed',{},[]);}
 async function loadAdminWebhookEvents(){return apiTry('/admin/webhooks/events',{},[]);}
+async function loadAdminWebhookTransitions(id){return apiTry(`/admin/webhooks/${id}/transitions`,{},[]);}
 async function loadAdminFlags(){return apiTry('/admin/feature-flags',{},[]);}
 async function loadAdminConfig(){return apiTry('/admin/config',{},[]);}
 async function loadAdminConfigHistory(){return apiTry('/admin/config/history',{},[]);}
 async function loadAdminPaymentSettings(){return apiTry('/admin/payments/settings',{},null);}
+async function loadAdminPaymentVersions(){return apiTry('/admin/payments/versions',{},[]);}
 async function loadAdminBackups(){return apiTry('/admin/backup/list',{},[]);}
 async function loadAdminRetention(){return apiTry('/admin/retention-policies',{},[]);}
 async function loadAdminReleaseControls(){return apiTry('/admin/release-controls',{},[]);}
@@ -1102,7 +1105,7 @@ async function saveConfigUi(){
 }
 async function savePaymentGatewaySetupUi(){
   const saveBtn=document.getElementById('sa-pay-save-btn');
-  if(saveBtn?.dataset?.locked==='1'){showModal('errorMsg','Payment setup is limited to ops:manage admins.');return;}
+  if(saveBtn?.dataset?.locked==='1'){showModal('errorMsg','Payment setup is limited to payments:settings admins.');return;}
   const provider=document.getElementById('sa-pay-provider')?.value||'razorpay';
   const mode=document.getElementById('sa-pay-mode')?.value||'test';
   const keyId=document.getElementById('sa-pay-key-id')?.value?.trim()||'';
@@ -1120,7 +1123,7 @@ async function savePaymentGatewaySetupUi(){
 }
 async function testPaymentGatewayConnectionUi(){
   const testBtn=document.getElementById('sa-pay-test-btn');
-  if(testBtn?.dataset?.locked==='1'){showModal('errorMsg','Payment setup is limited to ops:manage admins.');return;}
+  if(testBtn?.dataset?.locked==='1'){showModal('errorMsg','Payment connection testing is limited to payments:test admins.');return;}
   const outEl=document.getElementById('sa-pay-test-result');
   if(outEl)outEl.textContent='Testing connection...';
   try{
@@ -1131,12 +1134,63 @@ async function testPaymentGatewayConnectionUi(){
     if(outEl)outEl.textContent=`❌ ${e.message||'Connection test failed'}`;
   }
 }
+async function validateWebhookSignatureUi(){
+  const provider=document.getElementById('sa-wv-provider')?.value||'razorpay';
+  const event_id=document.getElementById('sa-wv-event-id')?.value?.trim()||'';
+  const event_name=document.getElementById('sa-wv-event-name')?.value?.trim()||'payment.captured';
+  const signature=document.getElementById('sa-wv-signature')?.value?.trim()||'';
+  const payloadText=document.getElementById('sa-wv-payload')?.value?.trim()||'{}';
+  const outEl=document.getElementById('sa-wv-result');
+  if(!event_id||!signature){showModal('errorMsg','Event ID and signature are required');return;}
+  let payload={};
+  try{payload=JSON.parse(payloadText);}catch(e){showModal('errorMsg','Webhook payload JSON invalid');return;}
+  if(outEl)outEl.textContent='Validating signature...';
+  try{
+    const out=await apiFetch('/admin/payments/webhooks/validate',{method:'POST',headers:adminHeaders(),body:JSON.stringify({provider,event_id,event_name,signature,payload,timestamp:Math.floor(Date.now()/1000)})});
+    if(outEl)outEl.textContent=`✅ ${out.status||'validated'} (${(out.diagnostics||[]).map(d=>d.code).join(', ')})`;
+    go('superadmin');
+  }catch(e){
+    if(outEl)outEl.textContent=`❌ ${e.message||'Validation failed'}`;
+  }
+}
+async function rotatePaymentSecretsUi(){
+  const provider=document.getElementById('sa-pay-provider')?.value||'razorpay';
+  const mode=document.getElementById('sa-pay-mode')?.value||'test';
+  const currency=(document.getElementById('sa-pay-currency')?.value?.trim()||'INR').toUpperCase();
+  const key_id=document.getElementById('sa-pay-key-id')?.value?.trim()||'';
+  const key_secret=document.getElementById('sa-pay-key-secret')?.value?.trim()||'';
+  const webhook_secret=document.getElementById('sa-pay-webhook')?.value?.trim()||'';
+  const external_secret_ref=document.getElementById('sa-pay-secret-ref')?.value?.trim()||'';
+  const reason=document.getElementById('sa-pay-rotate-reason')?.value?.trim()||'rotation';
+  const invalid=external_secret_ref?'':validatePaymentConfigUi({provider,mode,currency,keyId:key_id,keySecret:key_secret});
+  if(invalid){showModal('errorMsg',invalid);return;}
+  const payload={provider,mode,currency,reason,...(external_secret_ref?{external_secret_ref}:{key_id,key_secret,webhook_secret})};
+  try{
+    await apiFetch('/admin/payments/rotate',{method:'POST',headers:adminHeaders(),body:JSON.stringify(payload)});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to rotate payment secrets');}
+}
+async function rollbackPaymentSecretsUi(){
+  const version_no=Number(document.getElementById('sa-pay-rollback-version')?.value||0);
+  if(!version_no){showModal('errorMsg','Rollback version is required');return;}
+  try{
+    await apiFetch('/admin/payments/rollback',{method:'POST',headers:adminHeaders(),body:JSON.stringify({version_no,reason:'admin rollback'})});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to rollback payment secrets');}
+}
 async function retryWebhookUi(id){
+  const retryLocked=document.getElementById('sa-webhook-retry-locked')?.value==='1';
+  if(retryLocked){showModal('errorMsg','Webhook retry is limited to payments:webhooks:retry admins.');return;}
   try{
     await apiFetch(`/admin/webhooks/${id}/replay`,{method:'POST',headers:adminHeaders()});
     showModal('adminActionSaved');
     go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to retry webhook event');}
+}
+async function showWebhookTransitionsUi(id){
+  const rows=await loadAdminWebhookTransitions(id);
+  const body=rows.length?rows.map(r=>`${new Date(r.changed_at).toLocaleString()} · ${r.from_status||'∅'} → ${r.to_status}${r.reason?` (${r.reason})`:''}`).join('\n'):'No transitions.';
+  showModal('errorMsg',body.replace(/\n/g,'<br>'));
 }
 async function renderApiTelemetryAsync(){
   const telemetryEl=document.getElementById('sa-api-telemetry');
@@ -1161,8 +1215,8 @@ async function renderApiTelemetryAsync(){
       ${failedHooks.map(w=>`<tr><td>${w.id}</td><td>${escHtml(w.event_name||'-')}</td><td>${Number(w.retry_count||0)}</td><td>${escHtml(w.last_error||'-')}</td><td>${new Date(w.updated_at||w.created_at).toLocaleString()}</td><td><button class="btn btn-xs btn-br" onclick="retryWebhookUi(${w.id})">Retry</button></td></tr>`).join('')}
     </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No failed webhooks.</div>'}
     <div style="margin-top:10px;font-size:12px;font-weight:800">📜 Webhook Event Timeline</div>
-    ${timeline.length?`<table style="margin-top:6px"><tr><th>Time</th><th>Event</th><th>Status</th><th>Retries</th><th>Error</th></tr>
-      ${timeline.map(w=>`<tr><td>${new Date(w.updated_at||w.created_at).toLocaleString()}</td><td>${escHtml(w.event_name||'-')}</td><td>${escHtml(w.status||'-')}</td><td>${Number(w.retry_count||0)}</td><td>${escHtml(w.last_error||'-')}</td></tr>`).join('')}
+    ${timeline.length?`<table style="margin-top:6px"><tr><th>Time</th><th>Event</th><th>Status</th><th>Retries</th><th>Transitions</th><th>Error</th></tr>
+      ${timeline.map(w=>`<tr><td>${new Date(w.updated_at||w.created_at).toLocaleString()}</td><td>${escHtml(w.event_name||'-')}</td><td>${escHtml(w.status||'-')}</td><td>${Number(w.retry_count||0)}</td><td><button class="btn btn-xs btn-gh" onclick="showWebhookTransitionsUi(${w.id})">${Number(w.transitions_count||0)}</button></td><td>${escHtml(w.last_error||'-')}</td></tr>`).join('')}
     </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No webhook timeline records.</div>'}`;
 }
 async function createBackupUi(){
@@ -1246,6 +1300,12 @@ async function renderSuperAdminSections(){
   const opsEl=document.getElementById('sa-ops-body');
   const compEl=document.getElementById('sa-compliance-body');
   const secEl=document.getElementById('sa-security-body');
+  const perms=Array.isArray(currentUser?.permissions)?currentUser.permissions:[];
+  const canManageOps=perms.includes('*')||perms.includes('ops:manage');
+  const canPaymentSettings=perms.includes('*')||perms.includes('payments:settings');
+  const canPaymentTest=perms.includes('*')||perms.includes('payments:test');
+  const canWebhookRetry=perms.includes('*')||perms.includes('payments:webhooks:retry');
+  const canWebhookValidate=perms.includes('*')||perms.includes('payments:webhooks:validate');
   if(oEl){
     const dash=await loadAdminDashboard();
     if(!dash)oEl.innerHTML='<div style="font-size:12px;color:var(--muted)">Dashboard unavailable or permission denied.</div>';
@@ -1343,13 +1403,14 @@ async function renderSuperAdminSections(){
     setTimeout(renderApiTelemetryAsync,0);
   }
   if(opsEl){
-    let canManageOps=true;
     let cfg=[];
     let payState={exists:false,settings:null};
+    let payVersions=[];
     try{
-      cfg=await apiFetch('/admin/config');
-      payState=await apiFetch('/admin/payments/settings');
-    }catch(e){canManageOps=false;}
+      cfg=canManageOps?await apiFetch('/admin/config'):[];
+      payState=canPaymentSettings?await apiFetch('/admin/payments/settings'):{exists:false,settings:null};
+      payVersions=canPaymentSettings?await apiFetch('/admin/payments/versions'):[];
+    }catch(e){}
     const [flags,cfgHist,backups,ret,rel,jobs]=await Promise.all([loadAdminFlags(),loadAdminConfigHistory(),loadAdminBackups(),loadAdminRetention(),loadAdminReleaseControls(),loadAdminJobs()]);
     const payCfg=toObj(payState?.settings||{});
     const payProvider=payCfg.provider||'not-set';
@@ -1359,7 +1420,8 @@ async function renderSuperAdminSections(){
     const payMaskedKeySecret=maskSecret(payCfg.key_secret);
     const payMaskedWebhook=maskSecret(payCfg.webhook_secret);
     opsEl.innerHTML=`
-      ${canManageOps?'':`<div id="sa-pay-warning" class="alt a-w" style="margin-bottom:8px">Payment setup is read-only/disabled for your account. Required permission: <strong>ops:manage</strong>.</div>`}
+      ${canManageOps?'':`<div id="sa-pay-warning" class="alt a-w" style="margin-bottom:8px">Ops config is read-only for your account. Required permission: <strong>ops:manage</strong>.</div>`}
+      ${canPaymentSettings?'':`<div id="sa-pay-settings-warning" class="alt a-w" style="margin-bottom:8px">Payment settings are read-only for your account. Required permission: <strong>payments:settings</strong>.</div>`}
       <div class="alt a-s" style="margin-bottom:8px">Flags: ${flags.length} · Config: ${cfg.length} · History: ${cfgHist.length} · Backups: ${backups.length} · Jobs: ${jobs.length}</div>
       <div id="sa-ops-tabs" class="tabs" style="margin-bottom:8px">
         <div class="tab on" onclick="swSubTab('sa-ops-tabs',this,'sa-ops-flags')">Flags</div>
@@ -1391,19 +1453,28 @@ async function renderSuperAdminSections(){
         key id ${escHtml(payMaskedKeyId)} · key secret ${escHtml(payMaskedKeySecret)} · webhook ${escHtml(payMaskedWebhook)}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px">
-        <select id="sa-pay-provider" class="fc" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}><option value="razorpay" ${payProvider==='razorpay'?'selected':''}>Razorpay</option><option value="stripe" ${payProvider==='stripe'?'selected':''}>Stripe</option><option value="cashfree" ${payProvider==='cashfree'?'selected':''}>Cashfree</option></select>
-        <select id="sa-pay-mode" class="fc" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}><option value="test" ${payMode==='test'?'selected':''}>test</option><option value="live" ${payMode==='live'?'selected':''}>live</option></select>
-        <input id="sa-pay-currency" class="fc" placeholder="Currency (INR)" value="${escHtml(payCurrency)}" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
+         <select id="sa-pay-provider" class="fc" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}><option value="razorpay" ${payProvider==='razorpay'?'selected':''}>Razorpay</option><option value="stripe" ${payProvider==='stripe'?'selected':''}>Stripe</option><option value="cashfree" ${payProvider==='cashfree'?'selected':''}>Cashfree</option></select>
+         <select id="sa-pay-mode" class="fc" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}><option value="test" ${payMode==='test'?'selected':''}>test</option><option value="live" ${payMode==='live'?'selected':''}>live</option></select>
+         <input id="sa-pay-currency" class="fc" placeholder="Currency (INR)" value="${escHtml(payCurrency)}" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-        <input id="sa-pay-key-id" class="fc" placeholder="Gateway key id / publishable key" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
-        <input id="sa-pay-key-secret" class="fc" placeholder="Gateway key secret" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
+         <input id="sa-pay-key-id" class="fc" placeholder="Gateway key id / publishable key" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
+         <input id="sa-pay-key-secret" class="fc" placeholder="Gateway key secret" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
       </div>
-      <input id="sa-pay-webhook" class="fc" style="margin-top:8px" placeholder="Webhook secret (optional)" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
+      <input id="sa-pay-webhook" class="fc" style="margin-top:8px" placeholder="Webhook secret (optional)" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
+      <input id="sa-pay-secret-ref" class="fc" style="margin-top:8px" placeholder="External secret ref (optional, e.g. CASHFREE_LIVE)" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
+      <input id="sa-pay-rotate-reason" class="fc" style="margin-top:8px" placeholder="Rotation reason" value="credential rotation" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
       <div style="display:flex;gap:8px;margin-top:8px">
-        <button id="sa-pay-save-btn" data-locked="${canManageOps?'0':'1'}" class="btn btn-gh btn-sm" style="flex:1" onclick="savePaymentGatewaySetupUi()" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>Save Payment Gateway Setup</button>
-        <button id="sa-pay-test-btn" data-locked="${canManageOps?'0':'1'}" class="btn btn-sm btn-br" style="flex:1" onclick="testPaymentGatewayConnectionUi()" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>Test Connection</button>
+        <button id="sa-pay-save-btn" data-locked="${canPaymentSettings?'0':'1'}" class="btn btn-gh btn-sm" style="flex:1" onclick="savePaymentGatewaySetupUi()" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>Save Payment Gateway Setup</button>
+        <button id="sa-pay-test-btn" data-locked="${canPaymentTest?'0':'1'}" class="btn btn-sm btn-br" style="flex:1" onclick="testPaymentGatewayConnectionUi()" ${canPaymentTest?'':'disabled'}>Test Connection</button>
       </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-sm btn-gh" style="flex:1" onclick="rotatePaymentSecretsUi()" ${canPaymentSettings?'':'disabled'}>Rotate Credentials</button>
+        <input id="sa-pay-rollback-version" class="fc" placeholder="Rollback version # (e.g. 2)" ${canPaymentSettings?'':'disabled'}>
+        <button class="btn btn-sm btn-rd" onclick="rollbackPaymentSecretsUi()" ${canPaymentSettings?'':'disabled'}>Rollback</button>
+      </div>
+      <input type="hidden" id="sa-webhook-retry-locked" value="${canWebhookRetry?'0':'1'}">
+      <div class="alt a-i" style="margin-top:8px;font-size:11px">Version history: ${(payVersions||[]).slice(0,5).map(v=>`v${v.version_no}:${v.status}`).join(' · ')||'none'}</div>
       <div id="sa-pay-test-result" style="font-size:11px;color:var(--muted);margin-top:6px">No test run yet.</div>
       </div>
       <div id="sa-ops-backups" class="tc">
@@ -1456,6 +1527,18 @@ async function renderSuperAdminSections(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
         <input id="sa-sec-name" class="fc" placeholder="Secret name for rotation">
         <button class="btn btn-gh btn-sm" onclick="requestSecretRotationUi()">Request Rotation</button>
+      </div>
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-size:12px;font-weight:800;margin-bottom:6px">🪝 Webhook Signature Validator</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <select id="sa-wv-provider" class="fc"><option value="razorpay">razorpay</option><option value="stripe">stripe</option><option value="cashfree">cashfree</option></select>
+          <input id="sa-wv-event-id" class="fc" placeholder="event id">
+          <input id="sa-wv-event-name" class="fc" placeholder="event name" value="payment.captured">
+          <input id="sa-wv-signature" class="fc" placeholder="signature header value">
+          <input id="sa-wv-payload" class="fc" style="grid-column:1/3" placeholder='payload JSON e.g. {"id":"evt_1"}' value='{}'>
+        </div>
+        <button class="btn btn-sm btn-br" style="margin-top:8px" onclick="validateWebhookSignatureUi()" ${canWebhookValidate?'':'disabled'}>Validate Signature</button>
+        <div id="sa-wv-result" style="font-size:11px;color:var(--muted);margin-top:6px">No validation run yet.</div>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:8px">Dual approvals: ${dual.length} · Secret rotations: ${secrets.length} · Roles in policy matrix: ${policy.length}</div>`;
   }
@@ -2707,14 +2790,17 @@ async function submitFlag(){
   setTimeout(()=>{document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px"><div style="font-size:44px;margin-bottom:10px">✅</div><h3 style="color:var(--green);margin-bottom:8px">Flag Submitted!</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Report saved to system queue and sent for AI/admin review.</p><div class="alt a-i" style="text-align:left">Expected resolution: ~5 minutes (AI auto-review) or 24 hours (admin review)</div><button class="btn btn-br" style="width:100%;margin-top:11px" onclick="closeMo()">OK</button></div>`;},200);
 }
 function paySuccess(){closeMo();setTimeout(()=>{document.getElementById('moInner').innerHTML=`<div style="text-align:center;padding:16px"><div style="font-size:48px;margin-bottom:10px">🎉</div><h3 style="color:var(--green);margin-bottom:6px">Payment Successful!</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">Welcome to EXAMBHAI Premium! All features unlocked.</p><button class="btn btn-br" style="width:100%;padding:11px" onclick="closeMo()">Start Learning →</button></div>`;document.getElementById('mo').classList.add('on');},200);}
-setTimeout(()=>{
+function renderAdminNav(){
   const nav=document.querySelector('.nav-g');
-  if(nav&&!document.getElementById('n-superadmin')){
+  const perms=Array.isArray(currentUser?.permissions)?currentUser.permissions:[];
+  const canAccessAdmin=Boolean(currentUser?.role&&currentUser.role!=='student'&&(perms.includes('*')||perms.length>0));
+  if(nav&&canAccessAdmin&&!document.getElementById('n-superadmin')){
     const lbl=document.createElement('div');lbl.className='nav-lbl';lbl.textContent='Admin';
     const item=document.createElement('div');item.className='ni';item.id='n-superadmin';item.innerHTML='<span class="ic">🛠️</span>Superadmin';item.onclick=()=>go('superadmin');
     nav.appendChild(lbl);nav.appendChild(item);
   }
-},0);
+}
+setTimeout(renderAdminNav,0);
 window.submitIssueReport=submitIssueReport;
 window.saveReportAction=saveReportAction;
 window.createAdminContent=createAdminContent;

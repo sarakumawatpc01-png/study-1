@@ -165,6 +165,45 @@ async function run() {
   }, adminToken);
   if (paymentConnTest.status !== 200 || !Array.isArray(paymentConnTest.body.diagnostics)) throw new Error('Payment connection test endpoint failed');
 
+  const paymentRotate = await req('POST', '/api/admin/payments/rotate', {
+    provider: 'cashfree',
+    mode: 'test',
+    currency: 'INR',
+    key_id: 'cashfree-key-rot-123',
+    key_secret: 'cashfree-secret-rot-123',
+    webhook_secret: 'cashfree-wh-rot-123',
+    reason: 'smoke rotate',
+  }, adminToken);
+  if (paymentRotate.status !== 201 || !paymentRotate.body.version) throw new Error('Payment rotate endpoint failed');
+
+  const paymentVersions = await req('GET', '/api/admin/payments/versions', null, adminToken);
+  if (paymentVersions.status !== 200 || !Array.isArray(paymentVersions.body) || paymentVersions.body.length < 1) throw new Error('Payment versions endpoint failed');
+
+  const rollbackTarget = Number(paymentVersions.body[paymentVersions.body.length - 1]?.version_no || 0);
+  if (rollbackTarget) {
+    const paymentRollback = await req('POST', '/api/admin/payments/rollback', { version_no: rollbackTarget, reason: 'smoke rollback' }, adminToken);
+    if (paymentRollback.status !== 200 || !paymentRollback.body.ok) throw new Error('Payment rollback endpoint failed');
+  }
+
+  const webhookPayload = JSON.stringify({ id: 'evt_smoke_1', amount: 100 });
+  const webhookSig = crypto.createHmac('sha256', 'whsec_123456').update(webhookPayload).digest('hex');
+  const webhookValidate = await req('POST', '/api/admin/payments/webhooks/validate', {
+    provider: 'razorpay',
+    event_id: `evt-${crypto.randomUUID()}`,
+    event_name: 'payment.captured',
+    signature: webhookSig,
+    payload: JSON.parse(webhookPayload),
+  }, adminToken);
+  if (webhookValidate.status !== 200 || webhookValidate.body.ok !== true) throw new Error('Webhook validate endpoint failed');
+
+  const webhookEvents = await req('GET', '/api/admin/webhooks/events', null, adminToken);
+  if (webhookEvents.status !== 200 || !Array.isArray(webhookEvents.body)) throw new Error('Webhook events timeline failed');
+  const firstWebhook = webhookEvents.body[0];
+  if (firstWebhook?.id) {
+    const transitions = await req('GET', `/api/admin/webhooks/${firstWebhook.id}/transitions`, null, adminToken);
+    if (transitions.status !== 200 || !Array.isArray(transitions.body)) throw new Error('Webhook transitions endpoint failed');
+  }
+
   const elevated = await req('POST', '/api/admin/security/elevated-access', {
     reason: 'Smoke test admin action',
     ttl_minutes: 10,

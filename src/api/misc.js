@@ -70,6 +70,14 @@ function isSafeBackupPath(p) {
 
 const PAYMENT_CONFIG_KEY = 'payments.gateway';
 const PAYMENT_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
+const CONNECTION_TEST_LIMIT_WINDOW_MS = 60 * 1000;
+const CONNECTION_TEST_LIMIT_MAX = 5;
+const CIRCUIT_BREAKER_FAIL_THRESHOLD = 3;
+const CIRCUIT_BREAKER_OPEN_MS = 2 * 60 * 1000;
+const WEBHOOK_TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
+// Process-local guardrails; replace with shared storage (e.g. Redis) for multi-instance deployments.
+const connectionTestBuckets = new Map();
+const providerCircuitState = new Map();
 
 function paymentEncryptionKey() {
   const base = String(process.env.PAYMENT_CONFIG_ENCRYPTION_KEY || process.env.JWT_SECRET || '');
@@ -92,19 +100,47 @@ function encryptPaymentSecrets(raw) {
 }
 
 function decryptPaymentSecrets(raw) {
-  const obj = typeof raw === 'string' ? parseJsonSafe(raw, {}) : (raw || {});
-  if (!obj?.encrypted) return obj;
-  const decipher = crypto.createDecipheriv(
-    'aes-256-gcm',
-    paymentEncryptionKey(),
-    Buffer.from(String(obj.iv || ''), 'base64')
-  );
-  decipher.setAuthTag(Buffer.from(String(obj.tag || ''), 'base64'));
-  const plain = Buffer.concat([
-    decipher.update(Buffer.from(String(obj.data || ''), 'base64')),
-    decipher.final(),
-  ]).toString('utf8');
-  return parseJsonSafe(plain, {});
+  try {
+    const obj = typeof raw === 'string' ? parseJsonSafe(raw, {}) : (raw || {});
+    if (!obj?.encrypted) return obj;
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      paymentEncryptionKey(),
+      Buffer.from(String(obj.iv || ''), 'base64')
+    );
+    decipher.setAuthTag(Buffer.from(String(obj.tag || ''), 'base64'));
+    const plain = Buffer.concat([
+      decipher.update(Buffer.from(String(obj.data || ''), 'base64')),
+      decipher.final(),
+    ]).toString('utf8');
+    return parseJsonSafe(plain, {});
+  } catch (_err) {
+    // eslint-disable-next-line no-console
+    console.error('Payment secret decrypt failed');
+    return {};
+  }
+}
+
+function externalSecretManagerEnabled() {
+  return String(process.env.PAYMENT_SECRET_MANAGER || '').toLowerCase() === 'env';
+}
+
+function resolveExternalPaymentSecret(ref) {
+  if (!externalSecretManagerEnabled()) return null;
+  const envKey = `PAYMENT_SECRET_REF_${String(ref || '').trim()}`;
+  const raw = process.env[envKey];
+  return parseJsonSafe(raw, null);
+}
+
+function hydratePaymentSecrets(cfg) {
+  if (!cfg?.managed_externally || !cfg?.external_secret_ref) return cfg || {};
+  const ext = resolveExternalPaymentSecret(cfg.external_secret_ref) || {};
+  return {
+    ...cfg,
+    key_id: ext.key_id || cfg.key_id || '',
+    key_secret: ext.key_secret || '',
+    webhook_secret: ext.webhook_secret || '',
+  };
 }
 
 function maskValue(v) {
@@ -115,7 +151,7 @@ function maskValue(v) {
 }
 
 function maskedPaymentSettings(raw) {
-  const cfg = decryptPaymentSecrets(raw);
+  const cfg = hydratePaymentSecrets(decryptPaymentSecrets(raw));
   return {
     provider: cfg.provider || null,
     mode: cfg.mode || null,
@@ -126,6 +162,8 @@ function maskedPaymentSettings(raw) {
     has_key_id: Boolean(String(cfg.key_id || '').trim()),
     has_key_secret: Boolean(String(cfg.key_secret || '').trim()),
     has_webhook_secret: Boolean(String(cfg.webhook_secret || '').trim()),
+    managed_externally: Boolean(cfg.managed_externally),
+    external_secret_ref: cfg.managed_externally ? String(cfg.external_secret_ref || '') : null,
   };
 }
 
@@ -165,6 +203,15 @@ function paymentSettingsSchema() {
   });
 }
 
+function externalPaymentSettingsSchema() {
+  return z.object({
+    provider: z.enum(['razorpay', 'stripe', 'cashfree']),
+    mode: z.enum(['test', 'live']),
+    currency: z.enum(PAYMENT_CURRENCIES),
+    external_secret_ref: z.string().min(3).max(120),
+  });
+}
+
 function requestJson({ hostname, path: requestPath, method = 'GET', headers = {}, timeoutMs = 5000 }) {
   return new Promise((resolve, reject) => {
     const req = https.request({ hostname, path: requestPath, method, headers }, (res) => {
@@ -178,6 +225,61 @@ function requestJson({ hostname, path: requestPath, method = 'GET', headers = {}
     req.setTimeout(timeoutMs, () => req.destroy(new Error('Connection timeout')));
     req.end();
   });
+}
+
+function assertConnectionRateLimit(userId) {
+  const now = Date.now();
+  const key = String(userId || 'anon');
+  const items = (connectionTestBuckets.get(key) || []).filter((t) => now - t < CONNECTION_TEST_LIMIT_WINDOW_MS);
+  if (items.length >= CONNECTION_TEST_LIMIT_MAX) {
+    return { ok: false, error: 'Too many payment connection tests. Try again in a minute.' };
+  }
+  items.push(now);
+  connectionTestBuckets.set(key, items);
+  return { ok: true };
+}
+
+function circuitKey(provider, mode) {
+  return `${provider || 'unknown'}:${mode || 'unknown'}`;
+}
+
+function isCircuitOpen(provider, mode) {
+  const state = providerCircuitState.get(circuitKey(provider, mode));
+  if (!state) return false;
+  if (state.openUntil && state.openUntil > Date.now()) return true;
+  if (state.openUntil && state.openUntil <= Date.now()) {
+    providerCircuitState.delete(circuitKey(provider, mode));
+  }
+  return false;
+}
+
+function updateCircuitState(provider, mode, success) {
+  const key = circuitKey(provider, mode);
+  const current = providerCircuitState.get(key) || { failures: 0, openUntil: 0 };
+  if (success) {
+    providerCircuitState.set(key, { failures: 0, openUntil: 0 });
+    return;
+  }
+  const failures = Number(current.failures || 0) + 1;
+  const openUntil = failures >= CIRCUIT_BREAKER_FAIL_THRESHOLD ? Date.now() + CIRCUIT_BREAKER_OPEN_MS : 0;
+  providerCircuitState.set(key, { failures, openUntil });
+}
+
+function appendWebhookTransition({ webhookEventId, fromStatus, toStatus, reason, changedBy }) {
+  db.prepare(
+    'INSERT INTO webhook_event_transitions (webhook_event_id, from_status, to_status, reason, changed_by, changed_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(webhookEventId, fromStatus || null, toStatus, reason || null, changedBy || null, nowIso());
+}
+
+function normalizeSig(v) {
+  return String(v || '').replace(/^sha256=/i, '').trim();
+}
+
+function safeTimingEqual(a, b) {
+  const aa = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  if (aa.length !== bb.length) return false;
+  return crypto.timingSafeEqual(aa, bb);
 }
 
 function userSummaryById(userId) {
@@ -941,16 +1043,35 @@ router.get('/admin/webhooks/failed', requirePermission('api:manage'), (_req, res
 });
 
 router.get('/admin/webhooks/events', requirePermission('api:manage'), (_req, res) => {
-  const rows = db.prepare('SELECT id, event_name, status, retry_count, last_error, created_at, updated_at FROM webhook_events ORDER BY updated_at DESC LIMIT 200').all();
+  const rows = db.prepare(
+    `SELECT e.id, e.provider, e.event_id, e.event_name, e.status, e.retry_count, e.last_error, e.signature_valid, e.created_at, e.updated_at,
+      (SELECT COUNT(*) FROM webhook_event_transitions t WHERE t.webhook_event_id = e.id) AS transitions_count
+      FROM webhook_events e
+      ORDER BY e.updated_at DESC LIMIT 200`
+  ).all();
   res.json(rows);
 });
 
-router.post('/admin/webhooks/:id/replay', requirePermission('api:manage'), (req, res) => {
+router.get('/admin/webhooks/:id/transitions', requirePermission('api:manage'), (req, res) => {
+  const rows = db.prepare(
+    'SELECT id, webhook_event_id, from_status, to_status, reason, changed_by, changed_at FROM webhook_event_transitions WHERE webhook_event_id = ? ORDER BY changed_at DESC'
+  ).all(req.params.id);
+  res.json(rows);
+});
+
+router.post('/admin/webhooks/:id/replay', requirePermission('payments:webhooks:retry'), (req, res) => {
   const row = db.prepare('SELECT * FROM webhook_events WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Webhook event not found' });
   if (!['failed', 'signature-invalid'].includes(String(row.status || ''))) {
     return res.status(400).json({ error: 'Only failed/signature-invalid webhook events can be retried' });
   }
+  appendWebhookTransition({
+    webhookEventId: row.id,
+    fromStatus: row.status,
+    toStatus: 'replayed',
+    reason: 'manual_retry',
+    changedBy: req.user.id,
+  });
   db.prepare("UPDATE webhook_events SET status='replayed', retry_count=retry_count + 1, last_error = NULL, updated_at = ? WHERE id = ?")
     .run(nowIso(), req.params.id);
   createAuditLog({ actor: req.user, action: 'webhook_replay', targetType: 'webhook_event', targetId: req.params.id, details: {} });
@@ -1055,7 +1176,7 @@ router.post('/admin/config', requirePermission('ops:manage'), (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/admin/payments/settings', requirePermission('ops:manage'), (_req, res) => {
+router.get('/admin/payments/settings', requirePermission('payments:settings'), (_req, res) => {
   const row = db.prepare('SELECT config_value, updated_by, updated_at FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
   if (!row) return res.json({ exists: false, settings: null });
   return res.json({
@@ -1066,12 +1187,19 @@ router.get('/admin/payments/settings', requirePermission('ops:manage'), (_req, r
   });
 });
 
-router.post('/admin/payments/settings', requirePermission('ops:manage'), (req, res) => {
-  const parsed = paymentSettingsSchema().safeParse(req.body);
+router.post('/admin/payments/settings', requirePermission('payments:settings'), (req, res) => {
+  const parsedManaged = externalPaymentSettingsSchema().safeParse(req.body || {});
+  const parsed = parsedManaged.success ? parsedManaged : paymentSettingsSchema().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid payment settings payload' });
   const oldRow = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
   const safe = parsed.data;
-  const encrypted = encryptPaymentSecrets({
+  const encrypted = encryptPaymentSecrets(parsedManaged.success ? {
+    provider: safe.provider,
+    mode: safe.mode,
+    currency: safe.currency,
+    managed_externally: true,
+    external_secret_ref: safe.external_secret_ref,
+  } : {
     provider: safe.provider,
     mode: safe.mode,
     currency: safe.currency,
@@ -1097,20 +1225,52 @@ router.post('/admin/payments/settings', requirePermission('ops:manage'), (req, r
     targetId: PAYMENT_CONFIG_KEY,
     details: { before: oldMasked, after: newMasked },
   });
+  const latest = db.prepare('SELECT MAX(version_no) AS v FROM payment_secret_versions').get();
+  const nextVersion = Number(latest?.v || 0) + 1;
+  db.prepare("UPDATE payment_secret_versions SET status = 'superseded' WHERE status = 'active'").run();
+  db.prepare(
+    'INSERT INTO payment_secret_versions (version_no, secret_ref, encrypted_payload, status, reason, changed_by, created_at, rolled_back_from_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    nextVersion,
+    parsedManaged.success ? safe.external_secret_ref : null,
+    nextVal,
+    'active',
+    parsedManaged.success ? 'external_secret_ref_update' : 'direct_secret_update',
+    req.user.id,
+    now,
+    null
+  );
   return res.json({ ok: true, settings: newMasked });
 });
 
-router.post('/admin/payments/test-connection', requirePermission('ops:manage'), async (req, res) => {
+router.post('/admin/payments/test-connection', requirePermission('payments:test'), async (req, res) => {
+  const rl = assertConnectionRateLimit(req.user.id);
+  if (!rl.ok) return res.status(429).json({ ok: false, diagnostics: [{ code: 'RATE_LIMITED', message: rl.error }] });
   const source = String(req.body?.source || 'saved').trim();
   let cfg;
   if (source === 'saved') {
     const row = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
     if (!row) return res.status(404).json({ ok: false, provider: null, mode: null, diagnostics: [{ code: 'NOT_CONFIGURED', message: 'Saved payment settings not found' }] });
-    cfg = decryptPaymentSecrets(row.config_value);
+    cfg = hydratePaymentSecrets(decryptPaymentSecrets(row.config_value));
   } else {
-    const parsed = paymentSettingsSchema().safeParse(req.body?.settings || req.body || {});
+    const parsedManaged = externalPaymentSettingsSchema().safeParse(req.body?.settings || req.body || {});
+    const parsed = parsedManaged.success ? parsedManaged : paymentSettingsSchema().safeParse(req.body?.settings || req.body || {});
     if (!parsed.success) return res.status(400).json({ ok: false, provider: null, mode: null, diagnostics: [{ code: 'INVALID_PAYLOAD', message: 'Payload failed payment validation' }] });
-    cfg = parsed.data;
+    cfg = hydratePaymentSecrets(parsedManaged.success ? {
+      provider: parsed.data.provider,
+      mode: parsed.data.mode,
+      currency: parsed.data.currency,
+      managed_externally: true,
+      external_secret_ref: parsed.data.external_secret_ref,
+    } : parsed.data);
+  }
+  if (isCircuitOpen(cfg.provider, cfg.mode)) {
+    return res.status(429).json({
+      ok: false,
+      provider: cfg.provider || null,
+      mode: cfg.mode || null,
+      diagnostics: [{ code: 'CIRCUIT_OPEN', message: 'Connection tests temporarily paused due to repeated provider failures' }],
+    });
   }
   const diagnostics = [];
   const details = { provider: cfg.provider || null, mode: cfg.mode || null, endpoint: null, status_code: null };
@@ -1130,13 +1290,27 @@ router.post('/admin/payments/test-connection', requirePermission('ops:manage'), 
       if (out.statusCode >= 200 && out.statusCode < 300) diagnostics.push({ code: 'AUTH_OK', message: 'Stripe credentials validated' });
       else diagnostics.push({ code: 'AUTH_FAILED', message: `Stripe returned status ${out.statusCode}` });
     } else {
-      details.endpoint = 'n/a';
-      diagnostics.push({ code: 'NOT_IMPLEMENTED', message: 'Cashfree validation stub: provider ping not implemented yet' });
+      const cashfreeHost = cfg.mode === 'live' ? 'api.cashfree.com' : 'sandbox.cashfree.com';
+      details.endpoint = `https://${cashfreeHost}/pg/orders`;
+      const out = await requestJson({
+        hostname: cashfreeHost,
+        path: '/pg/orders?limit=1',
+        method: 'GET',
+        headers: {
+          'x-client-id': String(cfg.key_id || ''),
+          'x-client-secret': String(cfg.key_secret || ''),
+          'x-api-version': '2022-09-01',
+        },
+      });
+      details.status_code = out.statusCode;
+      if (out.statusCode >= 200 && out.statusCode < 300) diagnostics.push({ code: 'AUTH_OK', message: 'Cashfree credentials validated' });
+      else diagnostics.push({ code: 'AUTH_FAILED', message: `Cashfree returned status ${out.statusCode}` });
     }
   } catch (err) {
     diagnostics.push({ code: 'NETWORK_ERROR', message: err.message || 'Failed to connect to provider' });
   }
   const ok = diagnostics.some((d) => d.code === 'AUTH_OK');
+  updateCircuitState(cfg.provider, cfg.mode, ok);
   createAuditLog({
     actor: req.user,
     action: 'payment_gateway_test_connection',
@@ -1145,6 +1319,147 @@ router.post('/admin/payments/test-connection', requirePermission('ops:manage'), 
     details: { provider: details.provider, mode: details.mode, ok, diagnostics },
   });
   return res.json({ ok, provider: details.provider, mode: details.mode, diagnostics, details });
+});
+
+router.get('/admin/payments/versions', requirePermission('payments:settings'), (_req, res) => {
+  const rows = db.prepare(
+    'SELECT id, version_no, secret_ref, status, reason, changed_by, created_at, rolled_back_from_version FROM payment_secret_versions ORDER BY version_no DESC LIMIT 100'
+  ).all();
+  res.json(rows);
+});
+
+router.post('/admin/payments/rotate', requirePermission('payments:settings'), (req, res) => {
+  const schema = z.object({
+    provider: z.enum(['razorpay', 'stripe', 'cashfree']),
+    mode: z.enum(['test', 'live']),
+    currency: z.enum(PAYMENT_CURRENCIES),
+    key_id: z.string().min(6).max(150).optional(),
+    key_secret: z.string().min(8).max(200).optional(),
+    webhook_secret: z.string().max(200).optional().nullable(),
+    external_secret_ref: z.string().min(3).max(120).optional(),
+    reason: z.string().min(5).max(200).optional(),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid rotate payload' });
+  const useExternal = Boolean(parsed.data.external_secret_ref);
+  const payload = useExternal
+    ? encryptPaymentSecrets({
+      provider: parsed.data.provider,
+      mode: parsed.data.mode,
+      currency: parsed.data.currency,
+      managed_externally: true,
+      external_secret_ref: parsed.data.external_secret_ref,
+    })
+    : encryptPaymentSecrets({
+      provider: parsed.data.provider,
+      mode: parsed.data.mode,
+      currency: parsed.data.currency,
+      key_id: parsed.data.key_id || '',
+      key_secret: parsed.data.key_secret || '',
+      webhook_secret: parsed.data.webhook_secret || null,
+    });
+  const nextVal = JSON.stringify(payload);
+  const now = nowIso();
+  const latest = db.prepare('SELECT MAX(version_no) AS v FROM payment_secret_versions').get();
+  const nextVersion = Number(latest?.v || 0) + 1;
+  db.prepare("UPDATE payment_secret_versions SET status = 'superseded' WHERE status = 'active'").run();
+  db.prepare(
+    'INSERT INTO payment_secret_versions (version_no, secret_ref, encrypted_payload, status, reason, changed_by, created_at, rolled_back_from_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(nextVersion, parsed.data.external_secret_ref || null, nextVal, 'active', parsed.data.reason || 'rotation', req.user.id, now, null);
+  db.prepare(
+    `INSERT INTO config_settings (config_key, config_value, validation_rule, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, validation_rule = excluded.validation_rule, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+  ).run(PAYMENT_CONFIG_KEY, nextVal, 'json', req.user.id, now);
+  db.prepare('INSERT INTO config_history (config_key, old_value, new_value, changed_by, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(PAYMENT_CONFIG_KEY, null, nextVal, req.user.id, now);
+  createAuditLog({ actor: req.user, action: 'payment_gateway_rotate', targetType: 'payment_gateway', targetId: PAYMENT_CONFIG_KEY, details: { version: nextVersion, external: useExternal } });
+  return res.status(201).json({ ok: true, version: nextVersion, settings: maskedPaymentSettings(nextVal) });
+});
+
+router.post('/admin/payments/rollback', requirePermission('payments:settings'), (req, res) => {
+  const schema = z.object({ version_no: z.number().int().positive(), reason: z.string().min(5).max(200).optional() });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid rollback payload' });
+  const version = db.prepare('SELECT version_no, secret_ref, encrypted_payload FROM payment_secret_versions WHERE version_no = ?').get(parsed.data.version_no);
+  if (!version) return res.status(404).json({ error: 'Version not found' });
+  const now = nowIso();
+  const latest = db.prepare('SELECT MAX(version_no) AS v FROM payment_secret_versions').get();
+  const nextVersion = Number(latest?.v || 0) + 1;
+  db.prepare("UPDATE payment_secret_versions SET status = 'superseded' WHERE status = 'active'").run();
+  db.prepare(
+    'INSERT INTO payment_secret_versions (version_no, secret_ref, encrypted_payload, status, reason, changed_by, created_at, rolled_back_from_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(nextVersion, version.secret_ref || null, version.encrypted_payload, 'active', parsed.data.reason || 'rollback', req.user.id, now, version.version_no);
+  db.prepare(
+    `INSERT INTO config_settings (config_key, config_value, validation_rule, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, validation_rule = excluded.validation_rule, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+  ).run(PAYMENT_CONFIG_KEY, version.encrypted_payload, 'json', req.user.id, now);
+  createAuditLog({ actor: req.user, action: 'payment_gateway_rollback', targetType: 'payment_gateway', targetId: PAYMENT_CONFIG_KEY, details: { rolled_back_to: version.version_no, new_version: nextVersion } });
+  return res.json({ ok: true, version: nextVersion, rolled_back_to: version.version_no, settings: maskedPaymentSettings(version.encrypted_payload) });
+});
+
+router.post('/admin/payments/webhooks/validate', requirePermission('payments:webhooks:validate'), (req, res) => {
+  const schema = z.object({
+    provider: z.enum(['razorpay', 'stripe', 'cashfree']),
+    event_id: z.string().min(3).max(120),
+    event_name: z.string().min(2).max(160),
+    signature: z.string().min(6),
+    payload: z.any(),
+    timestamp: z.number().int().positive().optional(),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid webhook validation payload' });
+  const p = parsed.data;
+  const payloadText = typeof p.payload === 'string' ? p.payload : JSON.stringify(p.payload || {});
+
+  const existing = db.prepare('SELECT id, seen_count FROM webhook_replay_guard WHERE provider = ? AND event_id = ?').get(p.provider, p.event_id);
+  if (existing) {
+    db.prepare('UPDATE webhook_replay_guard SET seen_count = seen_count + 1, last_seen_at = ? WHERE id = ?').run(nowIso(), existing.id);
+    return res.status(409).json({ ok: false, status: 'replay-detected', diagnostics: [{ code: 'REPLAY_DETECTED', message: 'Duplicate webhook event id detected' }] });
+  }
+
+  const cfgRow = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
+  if (!cfgRow) return res.status(404).json({ ok: false, status: 'missing-config', diagnostics: [{ code: 'NOT_CONFIGURED', message: 'Payment gateway configuration missing' }] });
+  const cfg = hydratePaymentSecrets(decryptPaymentSecrets(cfgRow.config_value));
+  const secret = String(cfg.webhook_secret || '');
+  if (!secret) return res.status(400).json({ ok: false, status: 'missing-secret', diagnostics: [{ code: 'MISSING_WEBHOOK_SECRET', message: 'Webhook secret is not configured' }] });
+
+  let expected = '';
+  if (p.provider === 'razorpay' || p.provider === 'cashfree') {
+    expected = crypto.createHmac('sha256', secret).update(payloadText).digest('hex');
+  } else {
+    const ts = Number(p.timestamp || 0);
+    if (!ts) return res.status(400).json({ ok: false, status: 'invalid-payload', diagnostics: [{ code: 'MISSING_TIMESTAMP', message: 'Stripe webhook validation requires timestamp' }] });
+    if (Math.abs(Date.now() - (ts * 1000)) > WEBHOOK_TIMESTAMP_TOLERANCE_MS) {
+      return res.status(400).json({ ok: false, status: 'invalid-timestamp', diagnostics: [{ code: 'TIMESTAMP_OUT_OF_WINDOW', message: 'Webhook timestamp outside replay window' }] });
+    }
+    expected = crypto.createHmac('sha256', secret).update(`${ts}.${payloadText}`).digest('hex');
+  }
+
+  const valid = safeTimingEqual(normalizeSig(expected), normalizeSig(p.signature));
+  const now = nowIso();
+  db.prepare('INSERT INTO webhook_replay_guard (provider, event_id, first_seen_at, last_seen_at, seen_count) VALUES (?, ?, ?, ?, ?)')
+    .run(p.provider, p.event_id, now, now, 1);
+  const initialStatus = valid ? 'delivered' : 'signature-invalid';
+  const row = db.prepare(
+    'INSERT INTO webhook_events (provider, event_id, event_name, payload_json, status, retry_count, last_error, signature_valid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)'
+  ).run(p.provider, p.event_id, p.event_name, payloadText, initialStatus, valid ? null : 'Signature validation failed', valid ? 1 : 0, now, now);
+  appendWebhookTransition({
+    webhookEventId: row.lastInsertRowid,
+    fromStatus: null,
+    toStatus: initialStatus,
+    reason: valid ? 'validated' : 'signature-mismatch',
+    changedBy: req.user.id,
+  });
+  createAuditLog({
+    actor: req.user,
+    action: 'webhook_signature_validate',
+    targetType: 'webhook_event',
+    targetId: row.lastInsertRowid,
+    details: { provider: p.provider, event_id: p.event_id, status: initialStatus },
+  });
+  return res.status(valid ? 200 : 400).json({ ok: valid, event_id: p.event_id, status: initialStatus, diagnostics: [{ code: valid ? 'SIGNATURE_VALID' : 'SIGNATURE_INVALID', message: valid ? 'Webhook signature validated' : 'Webhook signature invalid' }] });
 });
 
 router.get('/admin/backup/list', requirePermission('ops:manage'), (_req, res) => {

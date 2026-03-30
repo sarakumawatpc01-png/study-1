@@ -259,13 +259,38 @@ CREATE TABLE IF NOT EXISTS api_request_logs (
 
 CREATE TABLE IF NOT EXISTS webhook_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT,
+  event_id TEXT,
   event_name TEXT NOT NULL,
   payload_json TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'failed',
   retry_count INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
+  signature_valid INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS webhook_event_transitions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  webhook_event_id INTEGER NOT NULL,
+  from_status TEXT,
+  to_status TEXT NOT NULL,
+  reason TEXT,
+  changed_by INTEGER,
+  changed_at TEXT NOT NULL,
+  FOREIGN KEY (webhook_event_id) REFERENCES webhook_events(id) ON DELETE CASCADE,
+  FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS webhook_replay_guard (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  seen_count INTEGER NOT NULL DEFAULT 1,
+  UNIQUE(provider, event_id)
 );
 
 CREATE TABLE IF NOT EXISTS feature_flags (
@@ -297,6 +322,19 @@ CREATE TABLE IF NOT EXISTS config_history (
   new_value TEXT NOT NULL,
   changed_by INTEGER,
   created_at TEXT NOT NULL,
+  FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS payment_secret_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  version_no INTEGER NOT NULL UNIQUE,
+  secret_ref TEXT,
+  encrypted_payload TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  reason TEXT,
+  changed_by INTEGER,
+  created_at TEXT NOT NULL,
+  rolled_back_from_version INTEGER,
   FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
