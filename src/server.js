@@ -13,6 +13,28 @@ const analyticsApi = require('./api/analytics');
 const profileApi = require('./api/profile');
 const miscApi = require('./api/misc');
 
+const RELEASE_CACHE_TTL_MS = 3000;
+const releaseControlCache = {
+  loadedAt: 0,
+  maintenanceMode: false,
+  killSwitch: false,
+};
+
+function getReleaseControls() {
+  const now = Date.now();
+  if (now - releaseControlCache.loadedAt < RELEASE_CACHE_TTL_MS) return releaseControlCache;
+  try {
+    const rows = db.prepare('SELECT control_key, enabled FROM release_controls').all();
+    releaseControlCache.maintenanceMode = rows.some((r) => r.control_key === 'maintenance_mode' && Number(r.enabled) === 1);
+    releaseControlCache.killSwitch = rows.some((r) => r.control_key === 'global_kill_switch' && Number(r.enabled) === 1);
+  } catch (_err) {
+    releaseControlCache.maintenanceMode = false;
+    releaseControlCache.killSwitch = false;
+  }
+  releaseControlCache.loadedAt = now;
+  return releaseControlCache;
+}
+
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is required. Set it in environment variables or .env file.');
 }
@@ -46,11 +68,11 @@ app.use(
 );
 
 app.use((req, res, next) => {
+  const controls = getReleaseControls();
   const started = Date.now();
   res.on('finish', () => {
     try {
-      const release = db.prepare("SELECT enabled FROM release_controls WHERE control_key = 'global_kill_switch'").get();
-      if (release && Number(release.enabled) === 1) return;
+      if (controls.killSwitch) return;
       db.prepare(
         'INSERT INTO api_request_logs (user_id, method, endpoint, status_code, latency_ms, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
       ).run(req.user?.id || null, req.method, req.path, res.statusCode, Date.now() - started, 'app', new Date().toISOString());
@@ -62,12 +84,11 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
-  const maintenance = db.prepare("SELECT enabled FROM release_controls WHERE control_key = 'maintenance_mode'").get();
-  if (maintenance && Number(maintenance.enabled) === 1 && req.path !== '/health' && !req.path.startsWith('/api/auth')) {
+  const controls = getReleaseControls();
+  if (controls.maintenanceMode && req.path !== '/health' && !req.path.startsWith('/api/auth')) {
     return res.status(503).json({ error: 'Maintenance mode enabled' });
   }
-  const kill = db.prepare("SELECT enabled FROM release_controls WHERE control_key = 'global_kill_switch'").get();
-  if (kill && Number(kill.enabled) === 1 && req.path !== '/health') {
+  if (controls.killSwitch && req.path !== '/health') {
     return res.status(503).json({ error: 'Service temporarily disabled' });
   }
   return next();

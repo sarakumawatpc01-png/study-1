@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 const db = require('../db');
 const { authRequired } = require('../middleware/auth');
@@ -9,6 +10,7 @@ const {
   parseJsonSafe,
   requirePermission,
   createAuditLog,
+  consumeElevatedAccessToken,
   requireElevatedAccess,
   requireDualApproval,
   getRolePermissions,
@@ -59,6 +61,10 @@ function createApiKey() {
   const keyPrefix = raw.slice(0, 12);
   const keyHash = crypto.createHash('sha256').update(raw).digest('hex');
   return { raw, keyPrefix, keyHash };
+}
+
+function isSafeBackupPath(p) {
+  return /^[a-zA-Z0-9_./-]+$/.test(String(p || ''));
 }
 
 function userSummaryById(userId) {
@@ -210,7 +216,11 @@ router.get('/admin/dashboard', requirePermission('dashboard:view'), (_req, res) 
   const retention = totalUsers ? Number(((activeToday / totalUsers) * 100).toFixed(2)) : 0;
   const taskCompletion = totalTasks ? Number(((completedTasks / totalTasks) * 100).toFixed(2)) : 0;
   const api = db.prepare(
-    "SELECT AVG(latency_ms) AS avgLatency, SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) AS s5, COUNT(*) AS total FROM api_request_logs WHERE created_at >= datetime('now', '-1 day')"
+    `SELECT AVG(latency_ms) AS avgLatency,
+      SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) AS s5,
+      COUNT(*) AS total
+      FROM api_request_logs
+      WHERE created_at >= datetime('now', '-1 day')`
   ).get();
   const ai = db.prepare(
     "SELECT COUNT(*) AS calls, COALESCE(SUM(cost_usd), 0) AS totalCost FROM ai_usage WHERE created_at >= datetime('now', '-1 day')"
@@ -327,7 +337,9 @@ router.post('/admin/users/:id/delete', requirePermission('users:edit'), requireE
 
 router.post('/admin/users/:id/anonymize', requirePermission('users:edit'), requireElevatedAccess, (req, res) => {
   const anon = `anon-${req.params.id}-${Date.now()}@deleted.local`;
-  const r = db.prepare("UPDATE users SET email = ?, name = 'Anonymized User', exam = 'N/A', is_active = 0, token_version = token_version + 1 WHERE id = ?").run(anon, req.params.id);
+  const r = db.prepare(
+    "UPDATE users SET email = ?, name = 'Anonymized User', exam = 'N/A', is_active = 0, token_version = token_version + 1 WHERE id = ?"
+  ).run(anon, req.params.id);
   if (!r.changes) return res.status(404).json({ error: 'User not found' });
   createAuditLog({ actor: req.user, action: 'user_anonymize', targetType: 'user', targetId: req.params.id, details: {} });
   res.json({ ok: true });
@@ -344,9 +356,25 @@ router.post('/admin/users/bulk', requirePermission('users:edit'), (req, res) => 
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid bulk payload' });
   const ids = parsed.data.user_ids;
+  if (['set_role', 'disable'].includes(parsed.data.action)) {
+    const consumed = consumeElevatedAccessToken(req.user.id, req.headers['x-elevated-token']);
+    if (!consumed.ok) return res.status(403).json({ error: consumed.error });
+  }
   if (parsed.data.action === 'set_role') {
     if (!parsed.data.role) return res.status(400).json({ error: 'role is required' });
+    if (parsed.data.role === 'superadmin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Only superadmin can assign superadmin role' });
+    }
     db.prepare(`UPDATE users SET role = ? WHERE id IN (${ids.map(() => '?').join(',')})`).run(parsed.data.role, ...ids);
+    for (const id of ids) {
+      createAuditLog({
+        actor: req.user,
+        action: 'user_role_update',
+        targetType: 'user',
+        targetId: id,
+        details: { role: parsed.data.role },
+      });
+    }
   } else if (parsed.data.action === 'disable') {
     db.prepare(`UPDATE users SET is_active = 0, token_version = token_version + 1 WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
   } else if (parsed.data.action === 'enable') {
@@ -367,7 +395,7 @@ router.post('/admin/users/bulk', requirePermission('users:edit'), (req, res) => 
   res.json({ ok: true, affected: ids.length });
 });
 
-router.post('/admin/users/import', requirePermission('users:edit'), (req, res) => {
+router.post('/admin/users/import', requirePermission('users:edit'), async (req, res) => {
   const schema = z.object({
     users: z.array(
       z.object({
@@ -385,18 +413,24 @@ router.post('/admin/users/import', requirePermission('users:edit'), (req, res) =
   );
   const prof = db.prepare('INSERT OR IGNORE INTO profiles (user_id, mood, readiness_score) VALUES (?, ?, ?)');
   let count = 0;
-  const tx = db.transaction(() => {
-    for (const u of parsed.data.users) {
-      const r = stmt.run(u.email, crypto.createHash('sha256').update(`imported-${u.email}`).digest('hex'), u.name, u.exam, u.role || 'student', nowIso());
-      if (r.changes) {
-        count += 1;
-        prof.run(r.lastInsertRowid, 'Normal / Okay', 50);
-      }
+  const importedCredentials = [];
+  for (const u of parsed.data.users) {
+    const temporaryPassword = crypto.randomBytes(18).toString('hex');
+    const temporaryHash = await bcrypt.hash(temporaryPassword, 10);
+    const r = stmt.run(u.email, temporaryHash, u.name, u.exam, u.role || 'student', nowIso());
+    if (r.changes) {
+      count += 1;
+      importedCredentials.push({ email: u.email, reset_required: true });
+      prof.run(r.lastInsertRowid, 'Normal / Okay', 50);
     }
-  });
-  tx();
+  }
   createAuditLog({ actor: req.user, action: 'users_import', targetType: 'user', targetId: 'bulk', details: { imported: count } });
-  res.status(201).json({ ok: true, imported: count });
+  res.status(201).json({
+    ok: true,
+    imported: count,
+    users: importedCredentials,
+    note: 'Users are imported with random temporary passwords. Require secure password reset distribution out of band.',
+  });
 });
 
 router.get('/admin/reports', requirePermission('reports:view'), (req, res) => {
@@ -521,7 +555,9 @@ router.post('/admin/content/:id', requirePermission('content:edit'), (req, res) 
 });
 
 router.get('/admin/content/:id/versions', requirePermission('content:view'), (req, res) => {
-  const rows = db.prepare('SELECT id, content_id, version, snapshot_json, created_by, created_at FROM content_versions WHERE content_id = ? ORDER BY version DESC').all(req.params.id);
+  const rows = db.prepare(
+    'SELECT id, content_id, version, snapshot_json, created_by, created_at FROM content_versions WHERE content_id = ? ORDER BY version DESC'
+  ).all(req.params.id);
   res.json(rows.map((r) => ({ ...r, snapshot: parseJsonSafe(r.snapshot_json, {}) })));
 });
 
@@ -533,9 +569,19 @@ router.post('/admin/content/:id/rollback', requirePermission('content:edit'), re
   if (!v) return res.status(404).json({ error: 'Version not found' });
   const snap = parseJsonSafe(v.snapshot_json, null);
   if (!snap) return res.status(400).json({ error: 'Version payload invalid' });
+  const snapshotData = snap.data_json || JSON.stringify(snap.data || {});
   db.prepare(
     'UPDATE content_library SET course_key=?, title=?, description=?, data_json=?, status=?, updated_by=?, updated_at=? WHERE id=?'
-  ).run(snap.course_key || '', snap.title || '', snap.description || null, snap.data_json || JSON.stringify(snap.data || {}), snap.status || 'draft', req.user.id, nowIso(), req.params.id);
+  ).run(
+    snap.course_key || '',
+    snap.title || '',
+    snap.description || null,
+    snapshotData,
+    snap.status || 'draft',
+    req.user.id,
+    nowIso(),
+    req.params.id
+  );
   const next = db.prepare('SELECT COALESCE(MAX(version), 0) + 1 AS v FROM content_versions WHERE content_id = ?').get(req.params.id).v;
   db.prepare('INSERT INTO content_versions (content_id, version, snapshot_json, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(req.params.id, next, JSON.stringify(snap), req.user.id, nowIso());
@@ -586,7 +632,10 @@ router.get('/admin/audit', requirePermission('audit:view'), (req, res) => {
   if (format === 'csv') {
     const header = 'id,actor_user_id,actor_email,action,target_type,target_id,created_at,hash\n';
     const body = parsed
-      .map((r) => [r.id, r.actor_user_id || '', r.actor_email || '', r.action, r.target_type, r.target_id || '', r.created_at, r.hash].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .map((r) => {
+        const cells = [r.id, r.actor_user_id || '', r.actor_email || '', r.action, r.target_type, r.target_id || '', r.created_at, r.hash];
+        return cells.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',');
+      })
       .join('\n');
     res.setHeader('content-type', 'text/csv');
     return res.send(`${header}${body}\n`);
@@ -708,7 +757,9 @@ router.post('/admin/api/keys', requirePermission('api:manage'), (req, res) => {
 });
 
 router.get('/admin/api/keys', requirePermission('api:manage'), (_req, res) => {
-  const rows = db.prepare('SELECT id, name, key_prefix, status, rate_limit_per_min, quota_per_day, last_used_at, created_by, created_at FROM api_keys ORDER BY created_at DESC').all();
+  const rows = db.prepare(
+    'SELECT id, name, key_prefix, status, rate_limit_per_min, quota_per_day, last_used_at, created_by, created_at FROM api_keys ORDER BY created_at DESC'
+  ).all();
   res.json(rows);
 });
 
@@ -860,11 +911,17 @@ router.post('/admin/backup/create', requirePermission('ops:manage'), requireElev
   if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
   const filename = `app-${Date.now()}.db`;
   const backupPath = path.join(backupDir, filename);
-  fs.copyFileSync(db.__path, backupPath);
-  const row = db.prepare('INSERT INTO backup_jobs (backup_type, backup_path, status, triggered_by, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run('manual', backupPath, 'completed', req.user.id, nowIso());
-  createAuditLog({ actor: req.user, action: 'backup_create', targetType: 'backup', targetId: row.lastInsertRowid, details: { backupPath } });
-  res.status(201).json({ ok: true, id: row.lastInsertRowid, backup_path: backupPath });
+  try {
+    if (!isSafeBackupPath(backupPath)) return res.status(400).json({ error: 'Unsafe backup path generated' });
+    const safeBackupPath = backupPath.replace(/'/g, "''");
+    db.exec(`VACUUM INTO '${safeBackupPath}'`);
+    const row = db.prepare('INSERT INTO backup_jobs (backup_type, backup_path, status, triggered_by, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run('manual', backupPath, 'completed', req.user.id, nowIso());
+    createAuditLog({ actor: req.user, action: 'backup_create', targetType: 'backup', targetId: row.lastInsertRowid, details: { backupPath } });
+    res.status(201).json({ ok: true, id: row.lastInsertRowid, backup_path: backupPath });
+  } catch (_err) {
+    res.status(500).json({ error: 'Backup creation failed' });
+  }
 });
 
 router.post('/admin/backup/restore', requirePermission('ops:manage'), requireElevatedAccess, requireDualApproval('restore_backup'), (req, res) => {
@@ -872,9 +929,21 @@ router.post('/admin/backup/restore', requirePermission('ops:manage'), requireEle
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'backup_path is required' });
   if (!fs.existsSync(parsed.data.backup_path)) return res.status(404).json({ error: 'Backup file not found' });
-  fs.copyFileSync(parsed.data.backup_path, db.__path);
-  createAuditLog({ actor: req.user, action: 'backup_restore', targetType: 'backup', targetId: parsed.data.backup_path, details: {} });
-  res.json({ ok: true, restored_from: parsed.data.backup_path });
+  const row = db.prepare(
+    'INSERT INTO backup_jobs (backup_type, backup_path, status, triggered_by, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run('restore_request', parsed.data.backup_path, 'pending_restart', req.user.id, nowIso());
+  createAuditLog({
+    actor: req.user,
+    action: 'backup_restore_requested',
+    targetType: 'backup',
+    targetId: row.lastInsertRowid,
+    details: { backup_path: parsed.data.backup_path },
+  });
+  res.status(202).json({
+    ok: true,
+    message: 'Restore request recorded. Apply backup during controlled restart to avoid live database corruption.',
+    restore_job_id: row.lastInsertRowid,
+  });
 });
 
 router.get('/admin/retention-policies', requirePermission('ops:manage'), (_req, res) => {
@@ -997,9 +1066,18 @@ router.post('/admin/privacy/requests/:id/process', requirePermission('audit:view
   if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' });
   const row = db.prepare('SELECT id, user_id, request_type FROM privacy_requests WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Request not found' });
+  if (row.request_type === 'delete') {
+    const approvalId = Number(req.headers['x-dual-approval-id'] || 0);
+    const approval = db.prepare('SELECT status, action FROM dual_approval_requests WHERE id = ?').get(approvalId);
+    if (!approval || approval.status !== 'approved' || approval.action !== 'delete_user') {
+      return res.status(403).json({ error: 'Dual approval is required for delete privacy requests' });
+    }
+  }
   if (row.request_type === 'anonymize' && parsed.data.status === 'resolved') {
     const anon = `anon-${row.user_id}-${Date.now()}@deleted.local`;
-    db.prepare("UPDATE users SET email = ?, name = 'Anonymized User', exam = 'N/A', is_active = 0, token_version = token_version + 1 WHERE id = ?").run(anon, row.user_id);
+    db.prepare(
+      "UPDATE users SET email = ?, name = 'Anonymized User', exam = 'N/A', is_active = 0, token_version = token_version + 1 WHERE id = ?"
+    ).run(anon, row.user_id);
   }
   if (row.request_type === 'delete' && parsed.data.status === 'resolved') {
     db.prepare('DELETE FROM users WHERE id = ?').run(row.user_id);
@@ -1187,4 +1265,3 @@ router.get('/admin/me/permissions', authRequired, (req, res) => {
 });
 
 module.exports = router;
-

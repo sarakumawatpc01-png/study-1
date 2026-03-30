@@ -16,8 +16,12 @@ db.exec(schemaSql);
 function safeExec(sql) {
   try {
     db.exec(sql);
-  } catch (_err) {
-    // no-op for already-applied migrations
+  } catch (err) {
+    const msg = String(err?.message || '').toLowerCase();
+    if (msg.includes('duplicate column name')) return;
+    // eslint-disable-next-line no-console
+    console.error('Migration SQL failed:', sql, err.message);
+    throw err;
   }
 }
 

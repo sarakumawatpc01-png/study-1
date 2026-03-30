@@ -2,6 +2,7 @@ const http = require('http');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'smoke-test-secret';
+process.env.AUDIT_SIGNING_SECRET = process.env.AUDIT_SIGNING_SECRET || 'smoke-test-audit-secret';
 const app = require('./server');
 const db = require('./db');
 
@@ -28,7 +29,8 @@ function req(method, path, body, token, headers = {}) {
           let json = {};
           try {
             json = data ? JSON.parse(data) : {};
-          } catch (_e) {
+          } catch (e) {
+            console.error('Failed to parse response JSON for', method, path, e.message);
             json = { raw: data };
           }
           resolve({ status: res.statusCode, body: json, raw: data });
@@ -48,6 +50,7 @@ async function run() {
 
   const testEmail = `user-${crypto.randomUUID()}@example.com`;
   const adminEmail = `admin-${crypto.randomUUID()}@example.com`;
+  const adminPassword = crypto.randomBytes(12).toString('hex');
 
   const signup = await req('POST', '/api/auth/signup', {
     email: testEmail,
@@ -72,14 +75,14 @@ async function run() {
   const contentForbidden = await req('GET', '/api/admin/content', null, userToken);
   if (contentForbidden.status !== 403) throw new Error('Student unexpectedly accessed admin content');
 
-  const adminPass = await bcrypt.hash('StrongPass123', 10);
+  const adminPass = await bcrypt.hash(adminPassword, 10);
   const createdAt = new Date().toISOString();
   const adminInsert = db.prepare(
     'INSERT INTO users (email, password_hash, name, exam, role, is_active, token_version, mfa_enabled, created_at) VALUES (?, ?, ?, ?, ?, 1, 0, 1, ?)'
   ).run(adminEmail, adminPass, 'Admin User', 'UPSC', 'superadmin', createdAt);
   db.prepare('INSERT INTO profiles (user_id, mood, readiness_score) VALUES (?, ?, ?)').run(adminInsert.lastInsertRowid, 'Normal / Okay', 50);
 
-  const adminLogin = await req('POST', '/api/auth/login', { email: adminEmail, password: 'StrongPass123' });
+  const adminLogin = await req('POST', '/api/auth/login', { email: adminEmail, password: adminPassword });
   if (adminLogin.status !== 200 || !adminLogin.body.token) throw new Error('Admin login failed');
   const adminToken = adminLogin.body.token;
 
@@ -172,4 +175,3 @@ run().catch((e) => {
   console.error(e.message);
   process.exit(1);
 });
-

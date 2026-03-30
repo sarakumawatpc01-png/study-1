@@ -51,18 +51,22 @@ function createAuditLog({ actor, action, targetType, targetId, details }) {
   const now = new Date().toISOString();
   const last = db.prepare('SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1').get();
   const prevHash = last?.hash || null;
+  const normalizedTargetId = targetId == null ? null : String(targetId);
   const payload = JSON.stringify({
     actor_user_id: actor?.id || null,
     actor_email: actor?.email || null,
     action,
     target_type: targetType,
-    target_id: targetId == null ? null : String(targetId),
+    target_id: normalizedTargetId,
     details_json: JSON.stringify(details || {}),
     created_at: now,
     prev_hash: prevHash,
   });
   const hash = crypto.createHash('sha256').update(payload).digest('hex');
-  const secret = process.env.AUDIT_SIGNING_SECRET || process.env.JWT_SECRET || 'audit-secret';
+  const secret = process.env.AUDIT_SIGNING_SECRET;
+  if (!secret) {
+    throw new Error('AUDIT_SIGNING_SECRET is required for audit signing');
+  }
   const signature = crypto.createHmac('sha256', secret).update(hash).digest('hex');
   db.prepare(
     `INSERT INTO audit_log (actor_user_id, actor_email, action, target_type, target_id, details_json, created_at, prev_hash, hash, signature)
@@ -72,7 +76,7 @@ function createAuditLog({ actor, action, targetType, targetId, details }) {
     actor?.email || null,
     action,
     targetType,
-    targetId == null ? null : String(targetId),
+    normalizedTargetId,
     JSON.stringify(details || {}),
     now,
     prevHash,
@@ -82,16 +86,23 @@ function createAuditLog({ actor, action, targetType, targetId, details }) {
   return { hash, signature };
 }
 
-function requireElevatedAccess(req, res, next) {
-  const token = String(req.headers['x-elevated-token'] || '').trim();
-  if (!token) return res.status(403).json({ error: 'Elevated access token required' });
+function consumeElevatedAccessToken(actorUserId, token) {
+  const normalized = String(token || '').trim();
+  if (!normalized) return { ok: false, error: 'Elevated access token required' };
   const row = db
     .prepare('SELECT id, expires_at, used_at FROM elevated_access_requests WHERE actor_user_id = ? AND token = ?')
-    .get(req.user.id, token);
-  if (!row) return res.status(403).json({ error: 'Invalid elevated access token' });
-  if (row.used_at) return res.status(403).json({ error: 'Elevated access token already used' });
-  if (Date.parse(row.expires_at) <= Date.now()) return res.status(403).json({ error: 'Elevated access token expired' });
+    .get(actorUserId, normalized);
+  if (!row) return { ok: false, error: 'Invalid elevated access token' };
+  if (row.used_at) return { ok: false, error: 'Elevated access token already used' };
+  if (Date.parse(row.expires_at) <= Date.now()) return { ok: false, error: 'Elevated access token expired' };
   db.prepare('UPDATE elevated_access_requests SET used_at = ? WHERE id = ?').run(new Date().toISOString(), row.id);
+  return { ok: true };
+}
+
+function requireElevatedAccess(req, res, next) {
+  const token = String(req.headers['x-elevated-token'] || '').trim();
+  const consumed = consumeElevatedAccessToken(req.user.id, token);
+  if (!consumed.ok) return res.status(403).json({ error: consumed.error });
   return next();
 }
 
@@ -115,7 +126,7 @@ module.exports = {
   hasPermission,
   requirePermission,
   createAuditLog,
+  consumeElevatedAccessToken,
   requireElevatedAccess,
   requireDualApproval,
 };
-
