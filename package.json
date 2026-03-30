@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node src/smoke-test.js"
+    "test": "node src/smoke-test.js && node src/superadmin-ui-test.js",
+    "test:e2e": "playwright test"
   },
   "repository": {
     "type": "git",
@@ -31,9 +32,11 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "redis": "^4.7.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.1",
     "nodemon": "^3.1.10"
   }
 }
