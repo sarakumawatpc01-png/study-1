@@ -145,6 +145,17 @@ async function run() {
   }, adminToken);
   if (paymentSet.status !== 200 || !paymentSet.body.settings?.has_key_secret) throw new Error('Payment settings save failed');
 
+  const mistralSet = await req('POST', '/api/admin/ai/mistral-ocr', {
+    enabled: true,
+    model: 'mistral-ocr-latest',
+    api_key: 'mistral_test_api_key_123456',
+    base_url: 'https://api.mistral.ai',
+  }, adminToken);
+  if (mistralSet.status !== 200 || !mistralSet.body.settings?.has_api_key) throw new Error('Mistral OCR settings save failed');
+
+  const mistralGet = await req('GET', '/api/admin/ai/mistral-ocr', null, adminToken);
+  if (mistralGet.status !== 200 || mistralGet.body.api_key === 'mistral_test_api_key_123456') throw new Error('Mistral OCR masking failed');
+
   const paymentRead = await req('GET', '/api/admin/payments/settings', null, adminToken);
   if (paymentRead.status !== 200 || paymentRead.body.settings?.key_secret === 'secretKey_123456') throw new Error('Payment settings masking failed');
 
@@ -196,6 +207,33 @@ async function run() {
   }, adminToken);
   if (webhookValidate.status !== 200 || webhookValidate.body.ok !== true) throw new Error('Webhook validate endpoint failed');
 
+  const publicWebhookValidate = await req('POST', '/api/ingest/payments/webhooks/validate', {
+    provider: 'razorpay',
+    event_id: `evt-public-${crypto.randomUUID()}`,
+    event_name: 'payment.captured',
+    signature: webhookSig,
+    payload: JSON.parse(webhookPayload),
+  });
+  if (publicWebhookValidate.status !== 200 || publicWebhookValidate.body.ok !== true) throw new Error('Public webhook validate endpoint failed');
+
+  const contentOcr = await req('POST', '/api/admin/content/upload-ocr', {
+    course_key: 'ssc-cgl',
+    content_type: 'book',
+    title: 'Quant OCR Upload',
+    description: 'OCR extract',
+    source_file_name: 'quant.pdf',
+    source_mime_type: 'application/pdf',
+    raw_text: 'Sample OCR text',
+    pages: [{ page: 1, text: 'Sample OCR text' }],
+    metadata: { chapter: 'Algebra' },
+  }, adminToken);
+  if (contentOcr.status !== 201 || !contentOcr.body.id) throw new Error('OCR content upload failed');
+
+  const contentList = await req('GET', '/api/admin/content', null, adminToken);
+  const hasBook = Array.isArray(contentList.body) && contentList.body.some((c) => c.content_type === 'book');
+  const hasCourse = Array.isArray(contentList.body) && contentList.body.some((c) => c.content_type === 'course');
+  if (!hasBook || !hasCourse) throw new Error('Books/course listing failed after OCR upload');
+
   const webhookEvents = await req('GET', '/api/admin/webhooks/events', null, adminToken);
   if (webhookEvents.status !== 200 || !Array.isArray(webhookEvents.body)) throw new Error('Webhook events timeline failed');
   const firstWebhook = webhookEvents.body[0];
@@ -235,6 +273,10 @@ async function run() {
     db.prepare('DELETE FROM config_history WHERE config_key = ?').run('ops.sample');
     db.prepare('DELETE FROM api_keys WHERE name = ?').run('smoke-key');
     db.prepare('DELETE FROM ai_prompt_templates WHERE feature = ?').run('report-triage');
+    db.prepare('DELETE FROM content_library WHERE title = ?').run('Quant OCR Upload');
+    db.prepare('DELETE FROM ai_model_routes WHERE feature = ?').run('ocr.ingest');
+    db.prepare('DELETE FROM config_settings WHERE config_key = ?').run('ai.mistral_ocr');
+    db.prepare('DELETE FROM config_history WHERE config_key = ?').run('ai.mistral_ocr');
   });
   cleanup();
 

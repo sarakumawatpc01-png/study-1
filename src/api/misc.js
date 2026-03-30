@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
 const bcrypt = require('bcryptjs');
+const { createClient } = require('redis');
 const { z } = require('zod');
 const db = require('../db');
 const { authRequired } = require('../middleware/auth');
@@ -18,7 +19,8 @@ const {
 } = require('../services/admin');
 
 const router = express.Router();
-router.use(authRequired);
+const publicWebhookRouter = express.Router();
+router.use('/ingest', publicWebhookRouter);
 
 function inferQuestionBug(description, title = '') {
   const text = `${title} ${description}`.toLowerCase();
@@ -75,9 +77,39 @@ const CONNECTION_TEST_LIMIT_MAX = 5;
 const CIRCUIT_BREAKER_FAIL_THRESHOLD = 3;
 const CIRCUIT_BREAKER_OPEN_MS = 2 * 60 * 1000;
 const WEBHOOK_TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
+const PAYMENT_CIRCUIT_KEY_PREFIX = 'payments:circuit';
+const PAYMENT_CONNECTION_RL_KEY_PREFIX = 'payments:connection-tests';
+const PAYMENT_CONFIG_OCR_KEY = 'ai.mistral_ocr';
 // Process-local guardrails; replace with shared storage (e.g. Redis) for multi-instance deployments.
 const connectionTestBuckets = new Map();
 const providerCircuitState = new Map();
+let redisClientInitPromise = null;
+let redisInitFailedAt = 0;
+
+function redisEnabled() {
+  return Boolean(String(process.env.REDIS_URL || '').trim());
+}
+
+async function redisClient() {
+  if (!redisEnabled()) return null;
+  if (redisClientInitPromise) return redisClientInitPromise;
+  if (redisInitFailedAt && Date.now() - redisInitFailedAt < 30_000) return null;
+  redisClientInitPromise = (async () => {
+    try {
+      const client = createClient({ url: process.env.REDIS_URL });
+      client.on('error', () => {
+        redisInitFailedAt = Date.now();
+      });
+      await client.connect();
+      return client;
+    } catch (_err) {
+      redisInitFailedAt = Date.now();
+      redisClientInitPromise = null;
+      return null;
+    }
+  })();
+  return redisClientInitPromise;
+}
 
 function paymentEncryptionKey() {
   const base = String(process.env.PAYMENT_CONFIG_ENCRYPTION_KEY || process.env.JWT_SECRET || '');
@@ -167,6 +199,17 @@ function maskedPaymentSettings(raw) {
   };
 }
 
+function maskedMistralOcrSettings(raw) {
+  const cfg = typeof raw === 'string' ? parseJsonSafe(raw, {}) : (raw || {});
+  return {
+    enabled: Boolean(cfg.enabled),
+    base_url: String(cfg.base_url || 'https://api.mistral.ai'),
+    model: String(cfg.model || 'mistral-ocr-latest'),
+    api_key: maskValue(cfg.api_key),
+    has_api_key: Boolean(String(cfg.api_key || '').trim()),
+  };
+}
+
 function paymentSettingsSchema() {
   return z.object({
     provider: z.enum(['razorpay', 'stripe', 'cashfree']),
@@ -227,9 +270,23 @@ function requestJson({ hostname, path: requestPath, method = 'GET', headers = {}
   });
 }
 
-function assertConnectionRateLimit(userId) {
+async function assertConnectionRateLimit(userId) {
   const now = Date.now();
   const key = String(userId || 'anon');
+  const redis = await redisClient();
+  if (redis) {
+    try {
+      const redisKey = `${PAYMENT_CONNECTION_RL_KEY_PREFIX}:${key}`;
+      const count = await redis.incr(redisKey);
+      if (count === 1) await redis.pexpire(redisKey, CONNECTION_TEST_LIMIT_WINDOW_MS);
+      if (count > CONNECTION_TEST_LIMIT_MAX) {
+        return { ok: false, error: 'Too many payment connection tests. Try again in a minute.' };
+      }
+      return { ok: true };
+    } catch (_err) {
+      // fallback to local in-memory limiter
+    }
+  }
   const items = (connectionTestBuckets.get(key) || []).filter((t) => now - t < CONNECTION_TEST_LIMIT_WINDOW_MS);
   if (items.length >= CONNECTION_TEST_LIMIT_MAX) {
     return { ok: false, error: 'Too many payment connection tests. Try again in a minute.' };
@@ -243,7 +300,20 @@ function circuitKey(provider, mode) {
   return `${provider || 'unknown'}:${mode || 'unknown'}`;
 }
 
-function isCircuitOpen(provider, mode) {
+async function isCircuitOpen(provider, mode) {
+  const redis = await redisClient();
+  if (redis) {
+    try {
+      const value = await redis.get(`${PAYMENT_CIRCUIT_KEY_PREFIX}:${circuitKey(provider, mode)}`);
+      if (!value) return false;
+      const state = parseJsonSafe(value, null);
+      if (!state) return false;
+      if (Number(state.openUntil || 0) > Date.now()) return true;
+      return false;
+    } catch (_err) {
+      // fallback to local in-memory circuit state
+    }
+  }
   const state = providerCircuitState.get(circuitKey(provider, mode));
   if (!state) return false;
   if (state.openUntil && state.openUntil > Date.now()) return true;
@@ -253,8 +323,28 @@ function isCircuitOpen(provider, mode) {
   return false;
 }
 
-function updateCircuitState(provider, mode, success) {
+async function updateCircuitState(provider, mode, success) {
   const key = circuitKey(provider, mode);
+  const redis = await redisClient();
+  if (redis) {
+    try {
+      const redisKey = `${PAYMENT_CIRCUIT_KEY_PREFIX}:${key}`;
+      const currentRaw = await redis.get(redisKey);
+      const current = parseJsonSafe(currentRaw, { failures: 0, openUntil: 0 });
+      if (success) {
+        await redis.set(redisKey, JSON.stringify({ failures: 0, openUntil: 0 }), { PX: CIRCUIT_BREAKER_OPEN_MS });
+        providerCircuitState.set(key, { failures: 0, openUntil: 0 });
+        return;
+      }
+      const failures = Number(current.failures || 0) + 1;
+      const openUntil = failures >= CIRCUIT_BREAKER_FAIL_THRESHOLD ? Date.now() + CIRCUIT_BREAKER_OPEN_MS : 0;
+      await redis.set(redisKey, JSON.stringify({ failures, openUntil }), { PX: CIRCUIT_BREAKER_OPEN_MS });
+      providerCircuitState.set(key, { failures, openUntil });
+      return;
+    } catch (_err) {
+      // fallback to local in-memory circuit state
+    }
+  }
   const current = providerCircuitState.get(key) || { failures: 0, openUntil: 0 };
   if (success) {
     providerCircuitState.set(key, { failures: 0, openUntil: 0 });
@@ -272,7 +362,12 @@ function appendWebhookTransition({ webhookEventId, fromStatus, toStatus, reason,
 }
 
 function normalizeSig(v) {
-  return String(v || '').replace(/^sha256=/i, '').trim();
+  const raw = String(v || '').trim();
+  if (/v1=/i.test(raw)) {
+    const match = raw.match(/v1=([a-fA-F0-9]+)/i);
+    if (match) return match[1].trim();
+  }
+  return raw.replace(/^sha256=/i, '').trim();
 }
 
 function safeTimingEqual(a, b) {
@@ -280,6 +375,117 @@ function safeTimingEqual(a, b) {
   const bb = Buffer.from(String(b || ''));
   if (aa.length !== bb.length) return false;
   return crypto.timingSafeEqual(aa, bb);
+}
+
+const WEBHOOK_BASE_SCHEMA = z.object({
+  provider: z.enum(['razorpay', 'stripe', 'cashfree']),
+  event_id: z.string().min(3).max(120),
+  event_name: z.string().min(2).max(160),
+  signature: z.string().min(6),
+});
+
+const WEBHOOK_ADMIN_SCHEMA = WEBHOOK_BASE_SCHEMA.extend({
+  payload: z.any(),
+  timestamp: z.number().int().positive().optional(),
+});
+
+const WEBHOOK_PUBLIC_SCHEMA = WEBHOOK_BASE_SCHEMA.extend({
+  payload: z.union([z.record(z.any()), z.array(z.any())]),
+  timestamp: z.number().int().positive().optional(),
+}).superRefine((v, ctx) => {
+  if (v.provider === 'stripe' && !v.timestamp) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['timestamp'], message: 'Stripe webhook requires timestamp' });
+  }
+  if (v.provider === 'razorpay') {
+    if (!/^[a-fA-F0-9]{64}$/.test(normalizeSig(v.signature))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['signature'], message: 'Razorpay signature must be a sha256 hex digest' });
+    }
+    if (!/^(payment|order|subscription)\./.test(String(v.event_name || ''))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['event_name'], message: 'Razorpay event_name must start with payment., order., or subscription.' });
+    }
+  }
+  if (v.provider === 'stripe') {
+    if (!(/^[a-fA-F0-9]{32,128}$/.test(normalizeSig(v.signature)) || /(^|,)v1=[a-fA-F0-9]{32,128}/.test(String(v.signature || '')))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['signature'], message: 'Stripe signature must include a valid v1 digest' });
+    }
+    if (!String(v.event_name || '').includes('.')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['event_name'], message: 'Stripe event_name must use dot notation, e.g. payment_intent.succeeded' });
+    }
+  }
+  if (v.provider === 'cashfree') {
+    if (!/^[a-fA-F0-9]{64}$/.test(normalizeSig(v.signature))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['signature'], message: 'Cashfree signature must be a sha256 hex digest' });
+    }
+  }
+});
+
+function validateWebhookSignature({ provider, signature, payloadText, timestamp, secret }) {
+  if (!secret) {
+    return { ok: false, httpStatus: 400, status: 'missing-secret', diagnostics: [{ code: 'MISSING_WEBHOOK_SECRET', message: 'Webhook secret is not configured' }] };
+  }
+  let expected = '';
+  if (provider === 'razorpay' || provider === 'cashfree') {
+    expected = crypto.createHmac('sha256', secret).update(payloadText).digest('hex');
+  } else {
+    const ts = Number(timestamp || 0);
+    if (!ts) {
+      return { ok: false, httpStatus: 400, status: 'invalid-payload', diagnostics: [{ code: 'MISSING_TIMESTAMP', message: 'Stripe webhook validation requires timestamp' }] };
+    }
+    if (Math.abs(Date.now() - (ts * 1000)) > WEBHOOK_TIMESTAMP_TOLERANCE_MS) {
+      return { ok: false, httpStatus: 400, status: 'invalid-timestamp', diagnostics: [{ code: 'TIMESTAMP_OUT_OF_WINDOW', message: 'Webhook timestamp outside replay window' }] };
+    }
+    expected = crypto.createHmac('sha256', secret).update(`${ts}.${payloadText}`).digest('hex');
+  }
+  const valid = safeTimingEqual(normalizeSig(expected), normalizeSig(signature));
+  return {
+    ok: valid,
+    httpStatus: valid ? 200 : 400,
+    status: valid ? 'delivered' : 'signature-invalid',
+    diagnostics: [{ code: valid ? 'SIGNATURE_VALID' : 'SIGNATURE_INVALID', message: valid ? 'Webhook signature validated' : 'Webhook signature invalid' }],
+  };
+}
+
+function processWebhookValidation({ payload, changedBy }) {
+  const p = payload;
+  const payloadText = typeof p.payload === 'string' ? p.payload : JSON.stringify(p.payload || {});
+  const existing = db.prepare('SELECT id FROM webhook_replay_guard WHERE provider = ? AND event_id = ?').get(p.provider, p.event_id);
+  if (existing) {
+    db.prepare('UPDATE webhook_replay_guard SET seen_count = seen_count + 1, last_seen_at = ? WHERE id = ?').run(nowIso(), existing.id);
+    return { httpStatus: 409, body: { ok: false, status: 'replay-detected', diagnostics: [{ code: 'REPLAY_DETECTED', message: 'Duplicate webhook event id detected' }] } };
+  }
+  const cfgRow = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
+  if (!cfgRow) {
+    return { httpStatus: 404, body: { ok: false, status: 'missing-config', diagnostics: [{ code: 'NOT_CONFIGURED', message: 'Payment gateway configuration missing' }] } };
+  }
+  const cfg = hydratePaymentSecrets(decryptPaymentSecrets(cfgRow.config_value));
+  const verification = validateWebhookSignature({
+    provider: p.provider,
+    signature: p.signature,
+    payloadText,
+    timestamp: p.timestamp,
+    secret: String(cfg.webhook_secret || ''),
+  });
+  if (!verification.ok && verification.status !== 'signature-invalid') {
+    return { httpStatus: verification.httpStatus, body: { ok: false, status: verification.status, diagnostics: verification.diagnostics } };
+  }
+  const now = nowIso();
+  db.prepare('INSERT INTO webhook_replay_guard (provider, event_id, first_seen_at, last_seen_at, seen_count) VALUES (?, ?, ?, ?, ?)')
+    .run(p.provider, p.event_id, now, now, 1);
+  const row = db.prepare(
+    'INSERT INTO webhook_events (provider, event_id, event_name, payload_json, status, retry_count, last_error, signature_valid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)'
+  ).run(p.provider, p.event_id, p.event_name, payloadText, verification.status, verification.ok ? null : 'Signature validation failed', verification.ok ? 1 : 0, now, now);
+  appendWebhookTransition({
+    webhookEventId: row.lastInsertRowid,
+    fromStatus: null,
+    toStatus: verification.status,
+    reason: verification.ok ? 'validated' : 'signature-mismatch',
+    changedBy: changedBy || null,
+  });
+  return {
+    httpStatus: verification.httpStatus,
+    body: { ok: verification.ok, event_id: p.event_id, status: verification.status, diagnostics: verification.diagnostics },
+    eventId: row.lastInsertRowid,
+  };
 }
 
 function userSummaryById(userId) {
@@ -294,6 +500,15 @@ function userSummaryById(userId) {
   const notifications = db.prepare('SELECT id, title, body, read_flag, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').all(userId);
   return { user, tasks, moods, mockTests, reports, notifications };
 }
+
+publicWebhookRouter.post('/payments/webhooks/validate', (req, res) => {
+  const parsed = WEBHOOK_PUBLIC_SCHEMA.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid webhook validation payload' });
+  const result = processWebhookValidation({ payload: parsed.data, changedBy: null });
+  return res.status(result.httpStatus).json(result.body);
+});
+
+router.use(authRequired);
 
 router.get('/notifications', (req, res) => {
   const rows = db
@@ -739,6 +954,63 @@ router.post('/admin/content', requirePermission('content:edit'), (req, res) => {
   res.status(201).json({ ok: true, id: row.lastInsertRowid });
 });
 
+router.post('/admin/content/upload-ocr', requirePermission('content:edit'), (req, res) => {
+  const schema = z.object({
+    course_key: z.string().min(2).max(120),
+    content_type: z.enum(['course', 'book', 'syllabus', 'pyp', 'mock_test']),
+    title: z.string().min(2).max(200),
+    description: z.string().max(1000).optional().nullable(),
+    status: z.enum(['active', 'draft', 'archived']).optional(),
+    source_file_name: z.string().min(1).max(260),
+    source_mime_type: z.string().max(120).optional().nullable(),
+    raw_text: z.string().min(1).max(2_000_000),
+    pages: z.array(z.object({
+      page: z.number().int().positive(),
+      text: z.string().min(1),
+    })).optional(),
+    metadata: z.record(z.any()).optional(),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid OCR upload payload' });
+  const cfgRow = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_OCR_KEY);
+  const ocrCfg = parseJsonSafe(cfgRow?.config_value || '{}', {});
+  if (!ocrCfg.enabled) return res.status(400).json({ error: 'Mistral OCR is not enabled in AI settings' });
+  const p = parsed.data;
+  const now = nowIso();
+  const data = {
+    source: 'mistral_ocr',
+    model: String(ocrCfg.model || 'mistral-ocr-latest'),
+    source_file_name: p.source_file_name,
+    source_mime_type: p.source_mime_type || null,
+    extracted_text: p.raw_text,
+    pages: p.pages || [],
+    metadata: p.metadata || {},
+  };
+  const row = db.prepare(
+    'INSERT INTO content_library (course_key, content_type, title, description, data_json, status, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    p.course_key,
+    p.content_type,
+    p.title,
+    p.description || null,
+    JSON.stringify(data),
+    p.status || 'active',
+    req.user.id,
+    now,
+    now
+  );
+  db.prepare('INSERT INTO content_versions (content_id, version, snapshot_json, created_by, created_at) VALUES (?, 1, ?, ?, ?)')
+    .run(row.lastInsertRowid, JSON.stringify({ ...p, data, status: p.status || 'active' }), req.user.id, now);
+  createAuditLog({
+    actor: req.user,
+    action: 'content_upload_ocr',
+    targetType: 'content',
+    targetId: row.lastInsertRowid,
+    details: { course_key: p.course_key, content_type: p.content_type, source: 'mistral_ocr' },
+  });
+  return res.status(201).json({ ok: true, id: row.lastInsertRowid, content_source: 'mistral_ocr' });
+});
+
 router.post('/admin/content/:id', requirePermission('content:edit'), (req, res) => {
   const schema = z.object({
     course_key: z.string().min(2).max(120).optional(),
@@ -924,6 +1196,44 @@ router.post('/admin/ai/routes', requirePermission('ai:manage'), (req, res) => {
   ).run(parsed.data.feature, parsed.data.model, parsed.data.fallback_model || null, req.user.id, nowIso());
   createAuditLog({ actor: req.user, action: 'ai_route_update', targetType: 'ai_route', targetId: parsed.data.feature, details: parsed.data });
   res.json({ ok: true });
+});
+
+router.get('/admin/ai/mistral-ocr', requirePermission('ai:manage'), (_req, res) => {
+  const row = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_OCR_KEY);
+  return res.json(maskedMistralOcrSettings(row?.config_value || '{}'));
+});
+
+router.post('/admin/ai/mistral-ocr', requirePermission('ai:manage'), (req, res) => {
+  const schema = z.object({
+    enabled: z.boolean().optional(),
+    base_url: z.string().url().max(200).optional(),
+    model: z.string().min(3).max(120),
+    api_key: z.string().min(6).max(400),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid Mistral OCR payload' });
+  const prev = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_OCR_KEY);
+  const now = nowIso();
+  const next = JSON.stringify({
+    enabled: parsed.data.enabled !== undefined ? parsed.data.enabled : true,
+    base_url: parsed.data.base_url || 'https://api.mistral.ai',
+    model: parsed.data.model,
+    api_key: parsed.data.api_key,
+  });
+  db.prepare(
+    `INSERT INTO config_settings (config_key, config_value, validation_rule, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, validation_rule = excluded.validation_rule, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+  ).run(PAYMENT_CONFIG_OCR_KEY, next, 'json', req.user.id, now);
+  db.prepare('INSERT INTO config_history (config_key, old_value, new_value, changed_by, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(PAYMENT_CONFIG_OCR_KEY, prev?.config_value || null, next, req.user.id, now);
+  db.prepare(
+    `INSERT INTO ai_model_routes (feature, model, fallback_model, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(feature) DO UPDATE SET model = excluded.model, fallback_model = excluded.fallback_model, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+  ).run('ocr.ingest', parsed.data.model, null, req.user.id, now);
+  createAuditLog({ actor: req.user, action: 'ai_mistral_ocr_update', targetType: 'ai_route', targetId: 'ocr.ingest', details: { enabled: parsed.data.enabled !== false, model: parsed.data.model } });
+  return res.json({ ok: true, settings: maskedMistralOcrSettings(next) });
 });
 
 router.post('/ai/feedback', (req, res) => {
@@ -1244,7 +1554,7 @@ router.post('/admin/payments/settings', requirePermission('payments:settings'), 
 });
 
 router.post('/admin/payments/test-connection', requirePermission('payments:test'), async (req, res) => {
-  const rl = assertConnectionRateLimit(req.user.id);
+  const rl = await assertConnectionRateLimit(req.user.id);
   if (!rl.ok) return res.status(429).json({ ok: false, diagnostics: [{ code: 'RATE_LIMITED', message: rl.error }] });
   const source = String(req.body?.source || 'saved').trim();
   let cfg;
@@ -1264,7 +1574,7 @@ router.post('/admin/payments/test-connection', requirePermission('payments:test'
       external_secret_ref: parsed.data.external_secret_ref,
     } : parsed.data);
   }
-  if (isCircuitOpen(cfg.provider, cfg.mode)) {
+  if (await isCircuitOpen(cfg.provider, cfg.mode)) {
     return res.status(429).json({
       ok: false,
       provider: cfg.provider || null,
@@ -1310,7 +1620,7 @@ router.post('/admin/payments/test-connection', requirePermission('payments:test'
     diagnostics.push({ code: 'NETWORK_ERROR', message: err.message || 'Failed to connect to provider' });
   }
   const ok = diagnostics.some((d) => d.code === 'AUTH_OK');
-  updateCircuitState(cfg.provider, cfg.mode, ok);
+  await updateCircuitState(cfg.provider, cfg.mode, ok);
   createAuditLog({
     actor: req.user,
     action: 'payment_gateway_test_connection',
@@ -1400,66 +1710,17 @@ router.post('/admin/payments/rollback', requirePermission('payments:settings'), 
 });
 
 router.post('/admin/payments/webhooks/validate', requirePermission('payments:webhooks:validate'), (req, res) => {
-  const schema = z.object({
-    provider: z.enum(['razorpay', 'stripe', 'cashfree']),
-    event_id: z.string().min(3).max(120),
-    event_name: z.string().min(2).max(160),
-    signature: z.string().min(6),
-    payload: z.any(),
-    timestamp: z.number().int().positive().optional(),
-  });
-  const parsed = schema.safeParse(req.body || {});
+  const parsed = WEBHOOK_ADMIN_SCHEMA.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid webhook validation payload' });
-  const p = parsed.data;
-  const payloadText = typeof p.payload === 'string' ? p.payload : JSON.stringify(p.payload || {});
-
-  const existing = db.prepare('SELECT id, seen_count FROM webhook_replay_guard WHERE provider = ? AND event_id = ?').get(p.provider, p.event_id);
-  if (existing) {
-    db.prepare('UPDATE webhook_replay_guard SET seen_count = seen_count + 1, last_seen_at = ? WHERE id = ?').run(nowIso(), existing.id);
-    return res.status(409).json({ ok: false, status: 'replay-detected', diagnostics: [{ code: 'REPLAY_DETECTED', message: 'Duplicate webhook event id detected' }] });
-  }
-
-  const cfgRow = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
-  if (!cfgRow) return res.status(404).json({ ok: false, status: 'missing-config', diagnostics: [{ code: 'NOT_CONFIGURED', message: 'Payment gateway configuration missing' }] });
-  const cfg = hydratePaymentSecrets(decryptPaymentSecrets(cfgRow.config_value));
-  const secret = String(cfg.webhook_secret || '');
-  if (!secret) return res.status(400).json({ ok: false, status: 'missing-secret', diagnostics: [{ code: 'MISSING_WEBHOOK_SECRET', message: 'Webhook secret is not configured' }] });
-
-  let expected = '';
-  if (p.provider === 'razorpay' || p.provider === 'cashfree') {
-    expected = crypto.createHmac('sha256', secret).update(payloadText).digest('hex');
-  } else {
-    const ts = Number(p.timestamp || 0);
-    if (!ts) return res.status(400).json({ ok: false, status: 'invalid-payload', diagnostics: [{ code: 'MISSING_TIMESTAMP', message: 'Stripe webhook validation requires timestamp' }] });
-    if (Math.abs(Date.now() - (ts * 1000)) > WEBHOOK_TIMESTAMP_TOLERANCE_MS) {
-      return res.status(400).json({ ok: false, status: 'invalid-timestamp', diagnostics: [{ code: 'TIMESTAMP_OUT_OF_WINDOW', message: 'Webhook timestamp outside replay window' }] });
-    }
-    expected = crypto.createHmac('sha256', secret).update(`${ts}.${payloadText}`).digest('hex');
-  }
-
-  const valid = safeTimingEqual(normalizeSig(expected), normalizeSig(p.signature));
-  const now = nowIso();
-  db.prepare('INSERT INTO webhook_replay_guard (provider, event_id, first_seen_at, last_seen_at, seen_count) VALUES (?, ?, ?, ?, ?)')
-    .run(p.provider, p.event_id, now, now, 1);
-  const initialStatus = valid ? 'delivered' : 'signature-invalid';
-  const row = db.prepare(
-    'INSERT INTO webhook_events (provider, event_id, event_name, payload_json, status, retry_count, last_error, signature_valid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)'
-  ).run(p.provider, p.event_id, p.event_name, payloadText, initialStatus, valid ? null : 'Signature validation failed', valid ? 1 : 0, now, now);
-  appendWebhookTransition({
-    webhookEventId: row.lastInsertRowid,
-    fromStatus: null,
-    toStatus: initialStatus,
-    reason: valid ? 'validated' : 'signature-mismatch',
-    changedBy: req.user.id,
-  });
+  const result = processWebhookValidation({ payload: parsed.data, changedBy: req.user.id });
   createAuditLog({
     actor: req.user,
     action: 'webhook_signature_validate',
     targetType: 'webhook_event',
-    targetId: row.lastInsertRowid,
-    details: { provider: p.provider, event_id: p.event_id, status: initialStatus },
+    targetId: result.eventId || null,
+    details: { provider: parsed.data.provider, event_id: parsed.data.event_id, status: result.body?.status || null },
   });
-  return res.status(valid ? 200 : 400).json({ ok: valid, event_id: p.event_id, status: initialStatus, diagnostics: [{ code: valid ? 'SIGNATURE_VALID' : 'SIGNATURE_INVALID', message: valid ? 'Webhook signature validated' : 'Webhook signature invalid' }] });
+  return res.status(result.httpStatus).json(result.body);
 });
 
 router.get('/admin/backup/list', requirePermission('ops:manage'), (_req, res) => {

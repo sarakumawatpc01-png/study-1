@@ -936,6 +936,7 @@ async function loadAdminAudit(){return apiTry('/admin/audit',{},[]);}
 async function loadAdminAiGuardrails(){return apiTry('/admin/ai/guardrails',{},null);}
 async function loadAdminAiPrompts(){return apiTry('/admin/ai/prompts',{},[]);}
 async function loadAdminAiRoutes(){return apiTry('/admin/ai/routes',{},[]);}
+async function loadAdminMistralOcr(){return apiTry('/admin/ai/mistral-ocr',{},null);}
 async function loadAdminAiFeedback(){return apiTry('/admin/ai/feedback-queue',{},[]);}
 async function loadAdminApiKeys(){return apiTry('/admin/api/keys',{},[]);}
 async function loadAdminApiErrors(){return apiTry('/admin/api/errors',{},[]);}
@@ -1022,13 +1023,29 @@ async function createAdminContent(){
   const title=document.getElementById('ac-title')?.value?.trim()||'';
   const description=document.getElementById('ac-desc')?.value?.trim()||'';
   const status=document.getElementById('ac-status')?.value||'active';
+  const useOcr=document.getElementById('ac-use-ocr')?.checked||false;
   const dataText=document.getElementById('ac-data')?.value?.trim()||'{}';
   if(!title){showModal('errorMsg','Please enter title');return;}
   if(!courseKey){showModal('errorMsg','Please enter course/exam key');return;}
-  let dataObj={};
-  try{dataObj=JSON.parse(dataText);}catch(e){showModal('errorMsg','Metadata JSON is invalid');return;}
   try{
-    await apiFetch('/admin/content',{method:'POST',headers:adminHeaders(),body:JSON.stringify({course_key:courseKey,content_type:type,title,description:description||null,status,data:dataObj})});
+    if(useOcr){
+      const sourceFile=document.getElementById('ac-ocr-file')?.value?.trim()||'';
+      const sourceMime=document.getElementById('ac-ocr-mime')?.value?.trim()||'application/pdf';
+      const rawText=document.getElementById('ac-ocr-text')?.value?.trim()||'';
+      const pagesText=document.getElementById('ac-ocr-pages')?.value?.trim()||'[]';
+      if(!sourceFile||!rawText){showModal('errorMsg','OCR upload needs file name and extracted text');return;}
+      let pages=[];
+      let metadata={};
+      try{
+        pages=JSON.parse(pagesText);
+        metadata=JSON.parse(dataText);
+      }catch(e){showModal('errorMsg','OCR pages or metadata JSON is invalid');return;}
+      await apiFetch('/admin/content/upload-ocr',{method:'POST',headers:adminHeaders(),body:JSON.stringify({course_key:courseKey,content_type:type,title,description:description||null,status,source_file_name:sourceFile,source_mime_type:sourceMime,raw_text:rawText,pages,metadata})});
+    }else{
+      let dataObj={};
+      try{dataObj=JSON.parse(dataText);}catch(e){showModal('errorMsg','Metadata JSON is invalid');return;}
+      await apiFetch('/admin/content',{method:'POST',headers:adminHeaders(),body:JSON.stringify({course_key:courseKey,content_type:type,title,description:description||null,status,data:dataObj})});
+    }
     showModal('adminContentSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to create content item');}
 }
@@ -1064,6 +1081,17 @@ async function saveAiRoute(){
     await apiFetch('/admin/ai/routes',{method:'POST',headers:adminHeaders(),body:JSON.stringify({feature,model,fallback_model:fallback_model||null})});
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save AI route');}
+}
+async function saveMistralOcrUi(){
+  const enabled=document.getElementById('sa-ocr-enabled')?.checked??true;
+  const model=document.getElementById('sa-ocr-model')?.value?.trim()||'';
+  const api_key=document.getElementById('sa-ocr-api-key')?.value?.trim()||'';
+  const base_url=document.getElementById('sa-ocr-base')?.value?.trim()||'https://api.mistral.ai';
+  if(!model||!api_key){showModal('errorMsg','Mistral OCR model and API key are required');return;}
+  try{
+    await apiFetch('/admin/ai/mistral-ocr',{method:'POST',headers:adminHeaders(),body:JSON.stringify({enabled,model,api_key,base_url})});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to save Mistral OCR settings');}
 }
 async function createApiKeyUi(){
   const name=document.getElementById('sa-key-name')?.value?.trim()||'';
@@ -1361,8 +1389,9 @@ async function renderSuperAdminSections(){
     </table>`;
   }
   if(aiEl){
-    const [g,p,r,f]=await Promise.all([loadAdminAiGuardrails(),loadAdminAiPrompts(),loadAdminAiRoutes(),loadAdminAiFeedback()]);
+    const [g,p,r,f,ocr]=await Promise.all([loadAdminAiGuardrails(),loadAdminAiPrompts(),loadAdminAiRoutes(),loadAdminAiFeedback(),loadAdminMistralOcr()]);
     const gSafe=g||{};
+    const ocrSafe=ocr||{};
     aiEl.innerHTML=`
       <div class="alt a-i" style="margin-bottom:8px">AI Prompts: ${p.length} · Routes: ${r.length} · Feedback queue: ${f.length}</div>
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
@@ -1384,7 +1413,16 @@ async function renderSuperAdminSections(){
         <input id="sa-route-model" class="fc" placeholder="Model">
         <input id="sa-route-fallback" class="fc" placeholder="Fallback model">
       </div>
-      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveAiRoute()">Save Model Route</button>`;
+      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveAiRoute()">Save Model Route</button>
+      <div class="alt a-s" style="margin-top:12px">Mistral OCR ingest setup for superadmin uploads</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px">
+        <label class="alt a-s"><input id="sa-ocr-enabled" type="checkbox" ${ocrSafe.enabled!==false?'checked':''}> OCR enabled</label>
+        <input id="sa-ocr-base" class="fc" placeholder="Base URL" value="${escHtml(ocrSafe.base_url||'https://api.mistral.ai')}">
+        <input id="sa-ocr-model" class="fc" placeholder="OCR model" value="${escHtml(ocrSafe.model||'mistral-ocr-latest')}">
+        <input id="sa-ocr-api-key" class="fc" placeholder="API key (enter to update)" value="">
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Saved key: ${escHtml(ocrSafe.api_key||'not-set')}</div>
+      <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="saveMistralOcrUi()">Save Mistral OCR Setup</button>`;
   }
   if(apiEl){
     const keys=await loadAdminApiKeys();
@@ -2271,6 +2309,11 @@ superadmin:()=>`
         <div class="fg"><label>Status</label><select class="fc" id="ac-status"><option value="active">Active</option><option value="draft">Draft</option><option value="archived">Archived</option></select></div>
         <div class="fg" style="grid-column:1/3"><label>Title</label><input class="fc" id="ac-title" placeholder="e.g. SSC CGL Quant Foundation"></div>
         <div class="fg" style="grid-column:1/3"><label>Description</label><input class="fc" id="ac-desc" placeholder="Short description"></div>
+        <label class="alt a-s" style="grid-column:1/3"><input id="ac-use-ocr" type="checkbox"> Use Mistral OCR upload mode</label>
+        <div class="fg"><label>OCR Source File Name</label><input class="fc" id="ac-ocr-file" placeholder="e.g. paper-2024.pdf"></div>
+        <div class="fg"><label>OCR Source MIME</label><input class="fc" id="ac-ocr-mime" placeholder="e.g. application/pdf"></div>
+        <div class="fg" style="grid-column:1/3"><label>OCR Extracted Text</label><textarea class="fc" id="ac-ocr-text" style="min-height:80px"></textarea></div>
+        <div class="fg" style="grid-column:1/3"><label>OCR Pages JSON</label><textarea class="fc" id="ac-ocr-pages" style="min-height:80px">[]</textarea></div>
         <div class="fg" style="grid-column:1/3"><label>Metadata (JSON)</label><textarea class="fc" id="ac-data" style="min-height:80px">{}</textarea></div>
       </div>
       <button class="btn btn-br" onclick="createAdminContent()">Save Content</button>

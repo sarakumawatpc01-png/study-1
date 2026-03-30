@@ -14,12 +14,15 @@ function run() {
   assert(html.includes('/admin/payments/rotate'), 'Superadmin UI should expose payment rotate endpoint');
   assert(html.includes('/admin/payments/rollback'), 'Superadmin UI should expose payment rollback endpoint');
   assert(html.includes('/admin/payments/webhooks/validate'), 'Superadmin UI should expose webhook signature validation');
+  assert(html.includes('/ingest/payments/webhooks/validate'), 'Superadmin UI should include public ingest webhook validator path');
   assert(html.includes("id=\"sa-pay-test-result\""), 'Superadmin UI should render payment test result area');
   assert(html.includes("id=\"sa-pay-settings-warning\""), 'Superadmin UI should include payment permission-disabled warning');
   assert(html.includes('id="sa-ops-payments"'), 'Superadmin Ops should include dedicated Payments sub-tab');
   assert(html.includes('id="sa-ops-backups"'), 'Superadmin Ops should include dedicated Backups sub-tab');
   assert(html.includes('/admin/webhooks/events'), 'Superadmin UI should fetch webhook timeline endpoint');
   assert(html.includes('retryWebhookUi('), 'Superadmin UI should expose webhook retry action');
+  assert(html.includes('/admin/ai/mistral-ocr'), 'Superadmin UI should expose Mistral OCR config endpoint');
+  assert(html.includes('/admin/content/upload-ocr'), 'Superadmin UI should expose OCR content upload endpoint');
 
   console.log('Superadmin UI integration checks passed');
 }
