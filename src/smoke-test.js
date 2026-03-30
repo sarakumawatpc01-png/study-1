@@ -63,6 +63,7 @@ async function run() {
   const userToken = signup.body.token;
   const me = await req('GET', '/api/auth/me', null, userToken);
   if (me.status !== 200 || me.body.email !== testEmail) throw new Error('Auth me failed');
+  if (me.body.role !== 'student' || !Array.isArray(me.body.permissions)) throw new Error('Auth me role/permissions payload missing');
 
   const report = await req('POST', '/api/reports', {
     category: 'question',
@@ -134,6 +135,36 @@ async function run() {
   }, adminToken);
   if (configSet.status !== 200) throw new Error('Config set failed');
 
+  const paymentSet = await req('POST', '/api/admin/payments/settings', {
+    provider: 'razorpay',
+    mode: 'test',
+    currency: 'INR',
+    key_id: 'rzp_test_AbCdEf1234',
+    key_secret: 'secretKey_123456',
+    webhook_secret: 'whsec_123456',
+  }, adminToken);
+  if (paymentSet.status !== 200 || !paymentSet.body.settings?.has_key_secret) throw new Error('Payment settings save failed');
+
+  const paymentRead = await req('GET', '/api/admin/payments/settings', null, adminToken);
+  if (paymentRead.status !== 200 || paymentRead.body.settings?.key_secret === 'secretKey_123456') throw new Error('Payment settings masking failed');
+
+  const paymentInConfig = await req('GET', '/api/admin/config', null, adminToken);
+  const paymentCfg = Array.isArray(paymentInConfig.body) ? paymentInConfig.body.find((c) => c.config_key === 'payments.gateway') : null;
+  if (!paymentCfg || String(paymentCfg.config_value || '').includes('secretKey_123456')) throw new Error('Config endpoint leaked payment secret');
+
+  const paymentConnTest = await req('POST', '/api/admin/payments/test-connection', {
+    source: 'payload',
+    settings: {
+      provider: 'cashfree',
+      mode: 'test',
+      currency: 'INR',
+      key_id: 'cashfree-key-123',
+      key_secret: 'cashfree-secret-123',
+      webhook_secret: '',
+    },
+  }, adminToken);
+  if (paymentConnTest.status !== 200 || !Array.isArray(paymentConnTest.body.diagnostics)) throw new Error('Payment connection test endpoint failed');
+
   const elevated = await req('POST', '/api/admin/security/elevated-access', {
     reason: 'Smoke test admin action',
     ttl_minutes: 10,
@@ -154,6 +185,7 @@ async function run() {
 
   const audits = await req('GET', '/api/admin/audit', null, adminToken);
   if (audits.status !== 200 || !Array.isArray(audits.body)) throw new Error('Audit endpoint failed');
+  if (!audits.body.some((a) => a.action === 'payment_gateway_update')) throw new Error('Payment audit enrichment missing');
 
   const cleanup = db.transaction(() => {
     db.prepare("DELETE FROM users WHERE email IN (?, ?)").run(testEmail, adminEmail);

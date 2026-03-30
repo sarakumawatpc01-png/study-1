@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const https = require('https');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 const db = require('../db');
@@ -65,6 +66,118 @@ function createApiKey() {
 
 function isSafeBackupPath(p) {
   return /^[a-zA-Z0-9_./-]+$/.test(String(p || ''));
+}
+
+const PAYMENT_CONFIG_KEY = 'payments.gateway';
+const PAYMENT_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
+
+function paymentEncryptionKey() {
+  const base = String(process.env.PAYMENT_CONFIG_ENCRYPTION_KEY || process.env.JWT_SECRET || '');
+  return crypto.createHash('sha256').update(base).digest();
+}
+
+function encryptPaymentSecrets(raw) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', paymentEncryptionKey(), iv);
+  const data = Buffer.concat([cipher.update(JSON.stringify(raw), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return {
+    encrypted: true,
+    alg: 'aes-256-gcm',
+    iv: iv.toString('base64'),
+    tag: tag.toString('base64'),
+    data: data.toString('base64'),
+    version: 1,
+  };
+}
+
+function decryptPaymentSecrets(raw) {
+  const obj = typeof raw === 'string' ? parseJsonSafe(raw, {}) : (raw || {});
+  if (!obj?.encrypted) return obj;
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    paymentEncryptionKey(),
+    Buffer.from(String(obj.iv || ''), 'base64')
+  );
+  decipher.setAuthTag(Buffer.from(String(obj.tag || ''), 'base64'));
+  const plain = Buffer.concat([
+    decipher.update(Buffer.from(String(obj.data || ''), 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+  return parseJsonSafe(plain, {});
+}
+
+function maskValue(v) {
+  const s = String(v || '').trim();
+  if (!s) return null;
+  if (s.length <= 6) return '••••••';
+  return `${s.slice(0, 3)}••••••${s.slice(-2)}`;
+}
+
+function maskedPaymentSettings(raw) {
+  const cfg = decryptPaymentSecrets(raw);
+  return {
+    provider: cfg.provider || null,
+    mode: cfg.mode || null,
+    currency: cfg.currency || null,
+    key_id: maskValue(cfg.key_id),
+    key_secret: maskValue(cfg.key_secret),
+    webhook_secret: maskValue(cfg.webhook_secret),
+    has_key_id: Boolean(String(cfg.key_id || '').trim()),
+    has_key_secret: Boolean(String(cfg.key_secret || '').trim()),
+    has_webhook_secret: Boolean(String(cfg.webhook_secret || '').trim()),
+  };
+}
+
+function paymentSettingsSchema() {
+  return z.object({
+    provider: z.enum(['razorpay', 'stripe', 'cashfree']),
+    mode: z.enum(['test', 'live']),
+    currency: z.enum(PAYMENT_CURRENCIES),
+    key_id: z.string().min(6).max(150),
+    key_secret: z.string().min(8).max(200),
+    webhook_secret: z.string().max(200).optional().nullable(),
+  }).superRefine((v, ctx) => {
+    if (v.provider === 'razorpay' && !/^rzp_(test|live)_[A-Za-z0-9]+$/.test(v.key_id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['key_id'], message: 'Invalid Razorpay key id format' });
+    }
+    if (v.provider === 'stripe') {
+      if (!/^pk_(test|live)_[A-Za-z0-9]+$/.test(v.key_id)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['key_id'], message: 'Invalid Stripe publishable key format' });
+      }
+      if (!/^sk_(test|live)_[A-Za-z0-9]+$/.test(v.key_secret)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['key_secret'], message: 'Invalid Stripe secret key format' });
+      }
+    }
+    if (v.provider === 'razorpay') {
+      const expected = v.mode === 'live' ? 'rzp_live_' : 'rzp_test_';
+      if (!v.key_id.startsWith(expected)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['mode'], message: 'Mode does not match Razorpay key prefix' });
+      }
+    }
+    if (v.provider === 'stripe') {
+      const expectedPk = v.mode === 'live' ? 'pk_live_' : 'pk_test_';
+      const expectedSk = v.mode === 'live' ? 'sk_live_' : 'sk_test_';
+      if (!v.key_id.startsWith(expectedPk) || !v.key_secret.startsWith(expectedSk)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['mode'], message: 'Mode does not match Stripe key prefixes' });
+      }
+    }
+  });
+}
+
+function requestJson({ hostname, path: requestPath, method = 'GET', headers = {}, timeoutMs = 5000 }) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({ hostname, path: requestPath, method, headers }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => {
+        resolve({ statusCode: res.statusCode || 0, body: data });
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('Connection timeout')));
+    req.end();
+  });
 }
 
 function userSummaryById(userId) {
@@ -827,9 +940,17 @@ router.get('/admin/webhooks/failed', requirePermission('api:manage'), (_req, res
   res.json(rows);
 });
 
+router.get('/admin/webhooks/events', requirePermission('api:manage'), (_req, res) => {
+  const rows = db.prepare('SELECT id, event_name, status, retry_count, last_error, created_at, updated_at FROM webhook_events ORDER BY updated_at DESC LIMIT 200').all();
+  res.json(rows);
+});
+
 router.post('/admin/webhooks/:id/replay', requirePermission('api:manage'), (req, res) => {
   const row = db.prepare('SELECT * FROM webhook_events WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Webhook event not found' });
+  if (!['failed', 'signature-invalid'].includes(String(row.status || ''))) {
+    return res.status(400).json({ error: 'Only failed/signature-invalid webhook events can be retried' });
+  }
   db.prepare("UPDATE webhook_events SET status='replayed', retry_count=retry_count + 1, last_error = NULL, updated_at = ? WHERE id = ?")
     .run(nowIso(), req.params.id);
   createAuditLog({ actor: req.user, action: 'webhook_replay', targetType: 'webhook_event', targetId: req.params.id, details: {} });
@@ -862,7 +983,16 @@ router.post('/admin/feature-flags', requirePermission('ops:manage'), (req, res) 
 
 router.get('/admin/config', requirePermission('ops:manage'), (_req, res) => {
   const rows = db.prepare('SELECT id, config_key, config_value, validation_rule, updated_by, updated_at FROM config_settings ORDER BY config_key').all();
-  res.json(rows.map((r) => ({ ...r, parsed: parseJsonSafe(r.config_value, r.config_value) })));
+  res.json(rows.map((r) => {
+    if (r.config_key === PAYMENT_CONFIG_KEY) {
+      return {
+        ...r,
+        config_value: JSON.stringify(maskedPaymentSettings(r.config_value)),
+        parsed: maskedPaymentSettings(r.config_value),
+      };
+    }
+    return { ...r, parsed: parseJsonSafe(r.config_value, r.config_value) };
+  }));
 });
 
 router.get('/admin/config/history', requirePermission('ops:manage'), (_req, res) => {
@@ -879,6 +1009,30 @@ router.post('/admin/config', requirePermission('ops:manage'), (req, res) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid config payload' });
   const existing = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(parsed.data.config_key);
+  if (parsed.data.config_key === PAYMENT_CONFIG_KEY) {
+    const paymentParsed = paymentSettingsSchema().safeParse(parsed.data.config_value || {});
+    if (!paymentParsed.success) return res.status(400).json({ error: 'payments.gateway requires valid payment settings object' });
+    const encrypted = JSON.stringify(encryptPaymentSecrets(paymentParsed.data));
+    const now = nowIso();
+    db.prepare(
+      `INSERT INTO config_settings (config_key, config_value, validation_rule, updated_by, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, validation_rule = excluded.validation_rule, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+    ).run(PAYMENT_CONFIG_KEY, encrypted, 'json', req.user.id, now);
+    db.prepare('INSERT INTO config_history (config_key, old_value, new_value, changed_by, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(PAYMENT_CONFIG_KEY, existing?.config_value || null, encrypted, req.user.id, now);
+    createAuditLog({
+      actor: req.user,
+      action: 'payment_gateway_update',
+      targetType: 'payment_gateway',
+      targetId: PAYMENT_CONFIG_KEY,
+      details: {
+        before: existing?.config_value ? maskedPaymentSettings(existing.config_value) : null,
+        after: maskedPaymentSettings(encrypted),
+      },
+    });
+    return res.json({ ok: true });
+  }
   const val = typeof parsed.data.config_value === 'string' ? parsed.data.config_value : JSON.stringify(parsed.data.config_value);
   const rule = parsed.data.validation_rule || 'json';
   if (rule === 'number' && Number.isNaN(Number(val))) return res.status(400).json({ error: 'config_value must be number' });
@@ -899,6 +1053,98 @@ router.post('/admin/config', requirePermission('ops:manage'), (req, res) => {
     .run(parsed.data.config_key, existing?.config_value || null, val, req.user.id, nowIso());
   createAuditLog({ actor: req.user, action: 'config_update', targetType: 'config', targetId: parsed.data.config_key, details: { rule } });
   res.json({ ok: true });
+});
+
+router.get('/admin/payments/settings', requirePermission('ops:manage'), (_req, res) => {
+  const row = db.prepare('SELECT config_value, updated_by, updated_at FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
+  if (!row) return res.json({ exists: false, settings: null });
+  return res.json({
+    exists: true,
+    updated_by: row.updated_by || null,
+    updated_at: row.updated_at || null,
+    settings: maskedPaymentSettings(row.config_value),
+  });
+});
+
+router.post('/admin/payments/settings', requirePermission('ops:manage'), (req, res) => {
+  const parsed = paymentSettingsSchema().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid payment settings payload' });
+  const oldRow = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
+  const safe = parsed.data;
+  const encrypted = encryptPaymentSecrets({
+    provider: safe.provider,
+    mode: safe.mode,
+    currency: safe.currency,
+    key_id: safe.key_id,
+    key_secret: safe.key_secret,
+    webhook_secret: safe.webhook_secret || null,
+  });
+  const nextVal = JSON.stringify(encrypted);
+  const now = nowIso();
+  db.prepare(
+    `INSERT INTO config_settings (config_key, config_value, validation_rule, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, validation_rule = excluded.validation_rule, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+  ).run(PAYMENT_CONFIG_KEY, nextVal, 'json', req.user.id, now);
+  db.prepare('INSERT INTO config_history (config_key, old_value, new_value, changed_by, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(PAYMENT_CONFIG_KEY, oldRow?.config_value || null, nextVal, req.user.id, now);
+  const oldMasked = oldRow?.config_value ? maskedPaymentSettings(oldRow.config_value) : null;
+  const newMasked = maskedPaymentSettings(nextVal);
+  createAuditLog({
+    actor: req.user,
+    action: 'payment_gateway_update',
+    targetType: 'payment_gateway',
+    targetId: PAYMENT_CONFIG_KEY,
+    details: { before: oldMasked, after: newMasked },
+  });
+  return res.json({ ok: true, settings: newMasked });
+});
+
+router.post('/admin/payments/test-connection', requirePermission('ops:manage'), async (req, res) => {
+  const source = String(req.body?.source || 'saved').trim();
+  let cfg;
+  if (source === 'saved') {
+    const row = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(PAYMENT_CONFIG_KEY);
+    if (!row) return res.status(404).json({ ok: false, provider: null, mode: null, diagnostics: [{ code: 'NOT_CONFIGURED', message: 'Saved payment settings not found' }] });
+    cfg = decryptPaymentSecrets(row.config_value);
+  } else {
+    const parsed = paymentSettingsSchema().safeParse(req.body?.settings || req.body || {});
+    if (!parsed.success) return res.status(400).json({ ok: false, provider: null, mode: null, diagnostics: [{ code: 'INVALID_PAYLOAD', message: 'Payload failed payment validation' }] });
+    cfg = parsed.data;
+  }
+  const diagnostics = [];
+  const details = { provider: cfg.provider || null, mode: cfg.mode || null, endpoint: null, status_code: null };
+  try {
+    if (cfg.provider === 'razorpay') {
+      details.endpoint = 'https://api.razorpay.com/v1/payments?count=1';
+      const auth = Buffer.from(`${cfg.key_id}:${cfg.key_secret}`).toString('base64');
+      const out = await requestJson({ hostname: 'api.razorpay.com', path: '/v1/payments?count=1', method: 'GET', headers: { Authorization: `Basic ${auth}` } });
+      details.status_code = out.statusCode;
+      if (out.statusCode >= 200 && out.statusCode < 300) diagnostics.push({ code: 'AUTH_OK', message: 'Razorpay credentials validated' });
+      else diagnostics.push({ code: 'AUTH_FAILED', message: `Razorpay returned status ${out.statusCode}` });
+    } else if (cfg.provider === 'stripe') {
+      details.endpoint = 'https://api.stripe.com/v1/charges?limit=1';
+      const auth = Buffer.from(`${cfg.key_secret}:`).toString('base64');
+      const out = await requestJson({ hostname: 'api.stripe.com', path: '/v1/charges?limit=1', method: 'GET', headers: { Authorization: `Basic ${auth}` } });
+      details.status_code = out.statusCode;
+      if (out.statusCode >= 200 && out.statusCode < 300) diagnostics.push({ code: 'AUTH_OK', message: 'Stripe credentials validated' });
+      else diagnostics.push({ code: 'AUTH_FAILED', message: `Stripe returned status ${out.statusCode}` });
+    } else {
+      details.endpoint = 'n/a';
+      diagnostics.push({ code: 'NOT_IMPLEMENTED', message: 'Cashfree validation stub: provider ping not implemented yet' });
+    }
+  } catch (err) {
+    diagnostics.push({ code: 'NETWORK_ERROR', message: err.message || 'Failed to connect to provider' });
+  }
+  const ok = diagnostics.some((d) => d.code === 'AUTH_OK');
+  createAuditLog({
+    actor: req.user,
+    action: 'payment_gateway_test_connection',
+    targetType: 'payment_gateway',
+    targetId: PAYMENT_CONFIG_KEY,
+    details: { provider: details.provider, mode: details.mode, ok, diagnostics },
+  });
+  return res.json({ ok, provider: details.provider, mode: details.mode, diagnostics, details });
 });
 
 router.get('/admin/backup/list', requirePermission('ops:manage'), (_req, res) => {

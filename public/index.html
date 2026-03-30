@@ -940,9 +940,11 @@ async function loadAdminApiKeys(){return apiTry('/admin/api/keys',{},[]);}
 async function loadAdminApiErrors(){return apiTry('/admin/api/errors',{},[]);}
 async function loadAdminApiRequests(){return apiTry('/admin/api/requests',{},[]);}
 async function loadAdminFailedWebhooks(){return apiTry('/admin/webhooks/failed',{},[]);}
+async function loadAdminWebhookEvents(){return apiTry('/admin/webhooks/events',{},[]);}
 async function loadAdminFlags(){return apiTry('/admin/feature-flags',{},[]);}
 async function loadAdminConfig(){return apiTry('/admin/config',{},[]);}
 async function loadAdminConfigHistory(){return apiTry('/admin/config/history',{},[]);}
+async function loadAdminPaymentSettings(){return apiTry('/admin/payments/settings',{},null);}
 async function loadAdminBackups(){return apiTry('/admin/backup/list',{},[]);}
 async function loadAdminRetention(){return apiTry('/admin/retention-policies',{},[]);}
 async function loadAdminReleaseControls(){return apiTry('/admin/release-controls',{},[]);}
@@ -975,6 +977,21 @@ function maskSecret(v){
   if(!s)return 'not-set';
   if(s.length<=6)return '••••••';
   return `${s.slice(0,3)}••••••${s.slice(-2)}`;
+}
+const PAY_CURRENCIES=['INR','USD','EUR','GBP','AED','SGD'];
+function validatePaymentConfigUi({provider,mode,currency,keyId,keySecret}){
+  if(!PAY_CURRENCIES.includes(currency))return 'Currency must be one of: '+PAY_CURRENCIES.join(', ');
+  if(!['test','live'].includes(mode))return 'Mode must be test or live';
+  if(provider==='razorpay'){
+    if(!/^rzp_(test|live)_[A-Za-z0-9]+$/.test(keyId))return 'Razorpay key id format invalid';
+    if((mode==='test'&&!keyId.startsWith('rzp_test_'))||(mode==='live'&&!keyId.startsWith('rzp_live_')))return 'Razorpay mode must match key id prefix';
+  }
+  if(provider==='stripe'){
+    if(!/^pk_(test|live)_[A-Za-z0-9]+$/.test(keyId))return 'Stripe publishable key format invalid';
+    if(!/^sk_(test|live)_[A-Za-z0-9]+$/.test(keySecret))return 'Stripe secret key format invalid';
+    if((mode==='test'&&(!keyId.startsWith('pk_test_')||!keySecret.startsWith('sk_test_')))||(mode==='live'&&(!keyId.startsWith('pk_live_')||!keySecret.startsWith('sk_live_'))))return 'Stripe mode must match key prefixes';
+  }
+  return '';
 }
 async function submitIssueReport(){
   const title=document.getElementById('reportTitle')?.value?.trim()||'';
@@ -1091,18 +1108,62 @@ async function savePaymentGatewaySetupUi(){
   const keyId=document.getElementById('sa-pay-key-id')?.value?.trim()||'';
   const keySecret=document.getElementById('sa-pay-key-secret')?.value?.trim()||'';
   const webhookSecret=document.getElementById('sa-pay-webhook')?.value?.trim()||'';
-  const currency=document.getElementById('sa-pay-currency')?.value?.trim()||'INR';
+  const currency=(document.getElementById('sa-pay-currency')?.value?.trim()||'INR').toUpperCase();
   if(!keyId||!keySecret){showModal('errorMsg','Payment key id and key secret are required');return;}
+  const invalid=validatePaymentConfigUi({provider,mode,currency,keyId,keySecret});
+  if(invalid){showModal('errorMsg',invalid);return;}
   const gatewayConfig={provider,mode,key_id:keyId,key_secret:keySecret,webhook_secret:webhookSecret,currency};
   try{
-    await apiFetch('/admin/config',{method:'POST',headers:adminHeaders(),body:JSON.stringify({config_key:'payments.gateway',config_value:gatewayConfig,validation_rule:'json'})});
+    await apiFetch('/admin/payments/settings',{method:'POST',headers:adminHeaders(),body:JSON.stringify(gatewayConfig)});
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save payment gateway setup');}
 }
 async function testPaymentGatewayConnectionUi(){
   const testBtn=document.getElementById('sa-pay-test-btn');
   if(testBtn?.dataset?.locked==='1'){showModal('errorMsg','Payment setup is limited to ops:manage admins.');return;}
-  showModal('errorMsg','Test connection stub added. Next step: wire this button to backend health/verify endpoint for gateway ping and webhook signature validation.');
+  const outEl=document.getElementById('sa-pay-test-result');
+  if(outEl)outEl.textContent='Testing connection...';
+  try{
+    const out=await apiFetch('/admin/payments/test-connection',{method:'POST',headers:adminHeaders(),body:JSON.stringify({source:'saved'})});
+    const details=(out.diagnostics||[]).map(d=>`${d.code}: ${d.message}`).join(' | ')||'No diagnostics';
+    if(outEl)outEl.textContent=`${out.ok?'✅':'⚠️'} ${details}`;
+  }catch(e){
+    if(outEl)outEl.textContent=`❌ ${e.message||'Connection test failed'}`;
+  }
+}
+async function retryWebhookUi(id){
+  try{
+    await apiFetch(`/admin/webhooks/${id}/replay`,{method:'POST',headers:adminHeaders()});
+    showModal('adminActionSaved');
+    go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to retry webhook event');}
+}
+async function renderApiTelemetryAsync(){
+  const telemetryEl=document.getElementById('sa-api-telemetry');
+  if(!telemetryEl)return;
+  telemetryEl.innerHTML='<div class="alt a-i">Loading API telemetry...</div>';
+  const [errs,reqs,hooks,events]=await Promise.all([loadAdminApiErrors(),loadAdminApiRequests(),loadAdminFailedWebhooks(),loadAdminWebhookEvents()]);
+  const topErrs=errs.slice(0,12);
+  const recentReqs=reqs.slice(0,25);
+  const failedHooks=hooks.slice(0,15);
+  const timeline=(events||[]).slice(0,20);
+  telemetryEl.innerHTML=`
+    <div style="margin-top:10px;font-size:12px;font-weight:800">📉 Endpoint Error Breakdown</div>
+    ${topErrs.length?`<table style="margin-top:6px"><tr><th>Endpoint</th><th>4xx</th><th>5xx</th><th>Total</th></tr>
+      ${topErrs.map(e=>`<tr><td>${escHtml(e.endpoint||'-')}</td><td>${Number(e.e4||0)}</td><td>${Number(e.e5||0)}</td><td>${Number(e.total||0)}</td></tr>`).join('')}
+    </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No API error records yet.</div>'}
+    <div style="margin-top:10px;font-size:12px;font-weight:800">🧭 Recent API Request Tracking</div>
+    ${recentReqs.length?`<table style="margin-top:6px"><tr><th>Time</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Latency</th></tr>
+      ${recentReqs.map(r=>`<tr><td>${new Date(r.created_at).toLocaleString()}</td><td>${escHtml(r.method)}</td><td>${escHtml(r.endpoint)}</td><td>${Number(r.status_code||0)}</td><td>${Number(r.latency_ms||0)} ms</td></tr>`).join('')}
+    </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No request logs available.</div>'}
+    <div style="margin-top:10px;font-size:12px;font-weight:800">🪝 Failed Webhook Events</div>
+    ${failedHooks.length?`<table style="margin-top:6px"><tr><th>ID</th><th>Event</th><th>Retries</th><th>Error</th><th>Updated</th><th>Action</th></tr>
+      ${failedHooks.map(w=>`<tr><td>${w.id}</td><td>${escHtml(w.event_name||'-')}</td><td>${Number(w.retry_count||0)}</td><td>${escHtml(w.last_error||'-')}</td><td>${new Date(w.updated_at||w.created_at).toLocaleString()}</td><td><button class="btn btn-xs btn-br" onclick="retryWebhookUi(${w.id})">Retry</button></td></tr>`).join('')}
+    </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No failed webhooks.</div>'}
+    <div style="margin-top:10px;font-size:12px;font-weight:800">📜 Webhook Event Timeline</div>
+    ${timeline.length?`<table style="margin-top:6px"><tr><th>Time</th><th>Event</th><th>Status</th><th>Retries</th><th>Error</th></tr>
+      ${timeline.map(w=>`<tr><td>${new Date(w.updated_at||w.created_at).toLocaleString()}</td><td>${escHtml(w.event_name||'-')}</td><td>${escHtml(w.status||'-')}</td><td>${Number(w.retry_count||0)}</td><td>${escHtml(w.last_error||'-')}</td></tr>`).join('')}
+    </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No webhook timeline records.</div>'}`;
 }
 async function createBackupUi(){
   try{
@@ -1266,12 +1327,9 @@ async function renderSuperAdminSections(){
       <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveAiRoute()">Save Model Route</button>`;
   }
   if(apiEl){
-    const [keys,errs,reqs,hooks]=await Promise.all([loadAdminApiKeys(),loadAdminApiErrors(),loadAdminApiRequests(),loadAdminFailedWebhooks()]);
-    const topErrs=errs.slice(0,12);
-    const recentReqs=reqs.slice(0,25);
-    const failedHooks=hooks.slice(0,15);
+    const keys=await loadAdminApiKeys();
     apiEl.innerHTML=`
-      <div class="alt a-i" style="margin-bottom:8px">Keys: ${keys.length} · Endpoints with errors: ${errs.length} · Requests tracked: ${reqs.length} · Failed webhooks: ${hooks.length}</div>
+      <div class="alt a-i" style="margin-bottom:8px">Keys: ${keys.length} · Telemetry loads asynchronously below.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <input id="sa-key-name" class="fc" placeholder="API key name">
         <input id="sa-key-rpm" class="fc" placeholder="Rate/min" value="60">
@@ -1281,26 +1339,19 @@ async function renderSuperAdminSections(){
       <table style="margin-top:10px"><tr><th>ID</th><th>Name</th><th>Prefix</th><th>Status</th><th>Action</th></tr>
         ${keys.slice(0,30).map(k=>`<tr><td>${k.id}</td><td>${escHtml(k.name)}</td><td>${escHtml(k.key_prefix)}</td><td>${escHtml(k.status)}</td><td>${k.status==='active'?`<button class="btn btn-xs btn-rd" onclick="revokeApiKeyUi(${k.id})">Revoke</button>`:'-'}</td></tr>`).join('')}
       </table>
-      <div style="margin-top:10px;font-size:12px;font-weight:800">📉 Endpoint Error Breakdown</div>
-      ${topErrs.length?`<table style="margin-top:6px"><tr><th>Endpoint</th><th>4xx</th><th>5xx</th><th>Total</th></tr>
-        ${topErrs.map(e=>`<tr><td>${escHtml(e.endpoint||'-')}</td><td>${Number(e.e4||0)}</td><td>${Number(e.e5||0)}</td><td>${Number(e.total||0)}</td></tr>`).join('')}
-      </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No API error records yet.</div>'}
-      <div style="margin-top:10px;font-size:12px;font-weight:800">🧭 Recent API Request Tracking</div>
-      ${recentReqs.length?`<table style="margin-top:6px"><tr><th>Time</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Latency</th></tr>
-        ${recentReqs.map(r=>`<tr><td>${new Date(r.created_at).toLocaleString()}</td><td>${escHtml(r.method)}</td><td>${escHtml(r.endpoint)}</td><td>${Number(r.status_code||0)}</td><td>${Number(r.latency_ms||0)} ms</td></tr>`).join('')}
-      </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No request logs available.</div>'}
-      <div style="margin-top:10px;font-size:12px;font-weight:800">🪝 Failed Webhook Events</div>
-      ${failedHooks.length?`<table style="margin-top:6px"><tr><th>ID</th><th>Event</th><th>Retries</th><th>Error</th><th>Updated</th></tr>
-        ${failedHooks.map(w=>`<tr><td>${w.id}</td><td>${escHtml(w.event_name||'-')}</td><td>${Number(w.retry_count||0)}</td><td>${escHtml(w.last_error||'-')}</td><td>${new Date(w.updated_at||w.created_at).toLocaleString()}</td></tr>`).join('')}
-      </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No failed webhooks.</div>'}`;
+      <div id="sa-api-telemetry" style="margin-top:10px"></div>`;
+    setTimeout(renderApiTelemetryAsync,0);
   }
   if(opsEl){
     let canManageOps=true;
     let cfg=[];
-    try{cfg=await apiFetch('/admin/config');}catch(e){canManageOps=false;}
+    let payState={exists:false,settings:null};
+    try{
+      cfg=await apiFetch('/admin/config');
+      payState=await apiFetch('/admin/payments/settings');
+    }catch(e){canManageOps=false;}
     const [flags,cfgHist,backups,ret,rel,jobs]=await Promise.all([loadAdminFlags(),loadAdminConfigHistory(),loadAdminBackups(),loadAdminRetention(),loadAdminReleaseControls(),loadAdminJobs()]);
-    const payRow=(cfg||[]).find(c=>c.config_key==='payments.gateway');
-    const payCfg=toObj(payRow?.config_value);
+    const payCfg=toObj(payState?.settings||{});
     const payProvider=payCfg.provider||'not-set';
     const payMode=payCfg.mode||'not-set';
     const payCurrency=payCfg.currency||'INR';
@@ -1310,6 +1361,13 @@ async function renderSuperAdminSections(){
     opsEl.innerHTML=`
       ${canManageOps?'':`<div id="sa-pay-warning" class="alt a-w" style="margin-bottom:8px">Payment setup is read-only/disabled for your account. Required permission: <strong>ops:manage</strong>.</div>`}
       <div class="alt a-s" style="margin-bottom:8px">Flags: ${flags.length} · Config: ${cfg.length} · History: ${cfgHist.length} · Backups: ${backups.length} · Jobs: ${jobs.length}</div>
+      <div id="sa-ops-tabs" class="tabs" style="margin-bottom:8px">
+        <div class="tab on" onclick="swSubTab('sa-ops-tabs',this,'sa-ops-flags')">Flags</div>
+        <div class="tab" onclick="swSubTab('sa-ops-tabs',this,'sa-ops-config')">Config</div>
+        <div class="tab" onclick="swSubTab('sa-ops-tabs',this,'sa-ops-payments')">Payments</div>
+        <div class="tab" onclick="swSubTab('sa-ops-tabs',this,'sa-ops-backups')">Backups</div>
+      </div>
+      <div id="sa-ops-flags" class="tc on">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
         <input id="sa-flag-key" class="fc" placeholder="flag key" ${canManageOps?'':'disabled'}>
         <input id="sa-flag-desc" class="fc" placeholder="description" ${canManageOps?'':'disabled'}>
@@ -1318,12 +1376,15 @@ async function renderSuperAdminSections(){
       </div>
       <label class="alt a-i" style="display:inline-block;margin-top:8px"><input id="sa-flag-enabled" type="checkbox" ${canManageOps?'':'disabled'}> Enabled</label>
       <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveFeatureFlagUi()" ${canManageOps?'':'disabled'}>Save Feature Flag</button>
+      </div>
+      <div id="sa-ops-config" class="tc">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
         <input id="sa-cfg-key" class="fc" placeholder="config key" ${canManageOps?'':'disabled'}>
         <input id="sa-cfg-val" class="fc" placeholder='config value JSON e.g. {"a":1}' ${canManageOps?'':'disabled'}>
       </div>
       <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveConfigUi()" ${canManageOps?'':'disabled'}>Save Config</button>
-      <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="createBackupUi()" ${canManageOps?'':'disabled'}>Create Backup Now</button>
+      </div>
+      <div id="sa-ops-payments" class="tc">
       <div style="margin-top:12px;font-size:12px;font-weight:800">💳 Payment Gateway Setup</div>
       <div class="alt a-i" style="margin-top:6px">
         Saved: provider <strong>${escHtml(payProvider)}</strong> · mode <strong>${escHtml(payMode)}</strong> · currency <strong>${escHtml(payCurrency)}</strong><br>
@@ -1341,9 +1402,14 @@ async function renderSuperAdminSections(){
       <input id="sa-pay-webhook" class="fc" style="margin-top:8px" placeholder="Webhook secret (optional)" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button id="sa-pay-save-btn" data-locked="${canManageOps?'0':'1'}" class="btn btn-gh btn-sm" style="flex:1" onclick="savePaymentGatewaySetupUi()" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>Save Payment Gateway Setup</button>
-        <button id="sa-pay-test-btn" data-locked="${canManageOps?'0':'1'}" class="btn btn-sm btn-br" style="flex:1" onclick="testPaymentGatewayConnectionUi()" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>Test Connection (Stub)</button>
+        <button id="sa-pay-test-btn" data-locked="${canManageOps?'0':'1'}" class="btn btn-sm btn-br" style="flex:1" onclick="testPaymentGatewayConnectionUi()" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>Test Connection</button>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px">Retention entries: ${ret.length} · Release controls: ${rel.length}</div>`;
+      <div id="sa-pay-test-result" style="font-size:11px;color:var(--muted);margin-top:6px">No test run yet.</div>
+      </div>
+      <div id="sa-ops-backups" class="tc">
+      <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="createBackupUi()" ${canManageOps?'':'disabled'}>Create Backup Now</button>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">Retention entries: ${ret.length} · Release controls: ${rel.length}</div>
+      </div>`;
   }
   if(compEl){
     const [audit,privacy,tickets,macros]=await Promise.all([loadAdminAudit(),loadAdminPrivacyRequests(),loadAdminSupportTickets(),loadAdminMacros()]);
@@ -1416,6 +1482,13 @@ window.addEventListener('beforeunload',()=>{
 });
 function closeMo(){document.getElementById('mo').classList.remove('on');resolveSecurityPrompt(null);}
 function swTab(el,id){const p=el.closest('.sec')||document.getElementById('mc');p.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));p.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));el.classList.add('on');const t=document.getElementById(id);if(t)t.classList.add('on');}
+function swSubTab(containerId,el,id){
+  const p=document.getElementById(containerId);if(!p)return;
+  p.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  p.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+  const t=document.getElementById(id);if(t)t.classList.add('on');
+}
 window.completeActiveTask=completeActiveTask;
 window.exitFocusEarly=exitFocusEarly;
 window.resumeTask=resumeTask;

@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
 const db = require('../db');
 const { authRequired } = require('../middleware/auth');
+const { getRolePermissions } = require('../services/admin');
 
 const router = express.Router();
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
@@ -251,11 +252,11 @@ setInterval(() => {
 router.get('/me', authRequired, (req, res) => {
   const user = db
     .prepare(
-      'SELECT u.id, u.email, u.name, u.exam, p.mood, p.readiness_score AS readinessScore FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.id = ?'
+      'SELECT u.id, u.email, u.name, u.exam, u.role, p.mood, p.readiness_score AS readinessScore FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.id = ?'
     )
     .get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json(user);
+  res.json({ ...user, permissions: getRolePermissions(user.role || 'student') });
 });
 
 module.exports = router;

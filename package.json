@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node src/smoke-test.js"
+    "test": "node src/smoke-test.js && node src/superadmin-ui-test.js"
   },
   "repository": {
     "type": "git",
