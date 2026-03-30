@@ -962,7 +962,7 @@ function adminHeaders(extra={}){
     ...extra
   };
 }
-function asJson(v,fallback={}){
+function tryParseJson(v,fallback={}){
   try{return JSON.parse(v);}catch(e){return fallback;}
 }
 async function submitIssueReport(){
@@ -1068,9 +1068,23 @@ async function saveConfigUi(){
   const valText=document.getElementById('sa-cfg-val')?.value?.trim()||'';
   if(!config_key||!valText){showModal('errorMsg','Config key and value are required');return;}
   try{
-    await apiFetch('/admin/config',{method:'POST',headers:adminHeaders(),body:JSON.stringify({config_key,config_value:asJson(valText,valText),validation_rule:'json'})});
+    await apiFetch('/admin/config',{method:'POST',headers:adminHeaders(),body:JSON.stringify({config_key,config_value:tryParseJson(valText,valText),validation_rule:'json'})});
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save config');}
+}
+async function savePaymentGatewaySetupUi(){
+  const provider=document.getElementById('sa-pay-provider')?.value||'razorpay';
+  const mode=document.getElementById('sa-pay-mode')?.value||'test';
+  const keyId=document.getElementById('sa-pay-key-id')?.value?.trim()||'';
+  const keySecret=document.getElementById('sa-pay-key-secret')?.value?.trim()||'';
+  const webhookSecret=document.getElementById('sa-pay-webhook')?.value?.trim()||'';
+  const currency=document.getElementById('sa-pay-currency')?.value?.trim()||'INR';
+  if(!keyId||!keySecret){showModal('errorMsg','Payment key id and key secret are required');return;}
+  const gatewayConfig={provider,mode,key_id:keyId,key_secret:keySecret,webhook_secret:webhookSecret,currency};
+  try{
+    await apiFetch('/admin/config',{method:'POST',headers:adminHeaders(),body:JSON.stringify({config_key:'payments.gateway',config_value:gatewayConfig,validation_rule:'json'})});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to save payment gateway setup');}
 }
 async function createBackupUi(){
   try{
@@ -1121,7 +1135,7 @@ async function createDualApprovalUi(){
   const payloadText=document.getElementById('sa-da-payload')?.value?.trim()||'{}';
   if(!action){showModal('errorMsg','Dual approval action is required');return;}
   try{
-    const out=await apiFetch('/admin/security/dual-approval',{method:'POST',headers:adminHeaders(),body:JSON.stringify({action,payload:asJson(payloadText,{})})});
+    const out=await apiFetch('/admin/security/dual-approval',{method:'POST',headers:adminHeaders(),body:JSON.stringify({action,payload:tryParseJson(payloadText,{})})});
     const input=document.getElementById('sa-dual-id');if(input)input.value=out.id||'';
     showModal('errorMsg',`Dual approval request created: #${out.id}`);
     go('superadmin');
@@ -1235,6 +1249,9 @@ async function renderSuperAdminSections(){
   }
   if(apiEl){
     const [keys,errs,reqs,hooks]=await Promise.all([loadAdminApiKeys(),loadAdminApiErrors(),loadAdminApiRequests(),loadAdminFailedWebhooks()]);
+    const topErrs=errs.slice(0,12);
+    const recentReqs=reqs.slice(0,25);
+    const failedHooks=hooks.slice(0,15);
     apiEl.innerHTML=`
       <div class="alt a-i" style="margin-bottom:8px">Keys: ${keys.length} · Endpoints with errors: ${errs.length} · Requests tracked: ${reqs.length} · Failed webhooks: ${hooks.length}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -1245,7 +1262,19 @@ async function renderSuperAdminSections(){
       <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="createApiKeyUi()">Create API Key</button>
       <table style="margin-top:10px"><tr><th>ID</th><th>Name</th><th>Prefix</th><th>Status</th><th>Action</th></tr>
         ${keys.slice(0,30).map(k=>`<tr><td>${k.id}</td><td>${escHtml(k.name)}</td><td>${escHtml(k.key_prefix)}</td><td>${escHtml(k.status)}</td><td>${k.status==='active'?`<button class="btn btn-xs btn-rd" onclick="revokeApiKeyUi(${k.id})">Revoke</button>`:'-'}</td></tr>`).join('')}
-      </table>`;
+      </table>
+      <div style="margin-top:10px;font-size:12px;font-weight:800">📉 Endpoint Error Breakdown</div>
+      ${topErrs.length?`<table style="margin-top:6px"><tr><th>Endpoint</th><th>4xx</th><th>5xx</th><th>Total</th></tr>
+        ${topErrs.map(e=>`<tr><td>${escHtml(e.endpoint||'-')}</td><td>${Number(e.e4||0)}</td><td>${Number(e.e5||0)}</td><td>${Number(e.total||0)}</td></tr>`).join('')}
+      </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No API error records yet.</div>'}
+      <div style="margin-top:10px;font-size:12px;font-weight:800">🧭 Recent API Request Tracking</div>
+      ${recentReqs.length?`<table style="margin-top:6px"><tr><th>Time</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Latency</th></tr>
+        ${recentReqs.map(r=>`<tr><td>${new Date(r.created_at).toLocaleString()}</td><td>${escHtml(r.method)}</td><td>${escHtml(r.endpoint)}</td><td>${Number(r.status_code||0)}</td><td>${Number(r.latency_ms||0)} ms</td></tr>`).join('')}
+      </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No request logs available.</div>'}
+      <div style="margin-top:10px;font-size:12px;font-weight:800">🪝 Failed Webhook Events</div>
+      ${failedHooks.length?`<table style="margin-top:6px"><tr><th>ID</th><th>Event</th><th>Retries</th><th>Error</th><th>Updated</th></tr>
+        ${failedHooks.map(w=>`<tr><td>${w.id}</td><td>${escHtml(w.event_name||'-')}</td><td>${Number(w.retry_count||0)}</td><td>${escHtml(w.last_error||'-')}</td><td>${new Date(w.updated_at||w.created_at).toLocaleString()}</td></tr>`).join('')}
+      </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No failed webhooks.</div>'}`;
   }
   if(opsEl){
     const [flags,cfg,cfgHist,backups,ret,rel,jobs]=await Promise.all([loadAdminFlags(),loadAdminConfig(),loadAdminConfigHistory(),loadAdminBackups(),loadAdminRetention(),loadAdminReleaseControls(),loadAdminJobs()]);
@@ -1265,6 +1294,18 @@ async function renderSuperAdminSections(){
       </div>
       <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveConfigUi()">Save Config</button>
       <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="createBackupUi()">Create Backup Now</button>
+      <div style="margin-top:12px;font-size:12px;font-weight:800">💳 Payment Gateway Setup</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px">
+        <select id="sa-pay-provider" class="fc"><option value="razorpay">Razorpay</option><option value="stripe">Stripe</option><option value="cashfree">Cashfree</option></select>
+        <select id="sa-pay-mode" class="fc"><option value="test">test</option><option value="live">live</option></select>
+        <input id="sa-pay-currency" class="fc" placeholder="Currency (INR)" value="INR">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <input id="sa-pay-key-id" class="fc" placeholder="Gateway key id / publishable key">
+        <input id="sa-pay-key-secret" class="fc" placeholder="Gateway key secret">
+      </div>
+      <input id="sa-pay-webhook" class="fc" style="margin-top:8px" placeholder="Webhook secret (optional)">
+      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="savePaymentGatewaySetupUi()">Save Payment Gateway Setup</button>
       <div style="font-size:11px;color:var(--muted);margin-top:8px">Retention entries: ${ret.length} · Release controls: ${rel.length}</div>`;
   }
   if(compEl){
