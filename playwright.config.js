@@ -6,6 +6,8 @@ module.exports = defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:3100',
     headless: true,
+    trace: 'retain-on-failure',
+    video: 'retain-on-failure',
   },
   webServer: {
     command: 'node src/server.js',

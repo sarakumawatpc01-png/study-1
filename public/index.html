@@ -983,6 +983,7 @@ function maskSecret(v){
   return `${s.slice(0,3)}••••••${s.slice(-2)}`;
 }
 const PAY_CURRENCIES=['INR','USD','EUR','GBP','AED','SGD'];
+const PUBLIC_INGEST_WEBHOOK_VALIDATOR='/ingest/payments/webhooks/validate';
 function validatePaymentConfigUi({provider,mode,currency,keyId,keySecret}){
   if(!PAY_CURRENCIES.includes(currency))return 'Currency must be one of: '+PAY_CURRENCIES.join(', ');
   if(!['test','live'].includes(mode))return 'Mode must be test or live';

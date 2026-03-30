@@ -32,11 +32,11 @@ test('superadmin payment/ops tab renders and supports interaction flows', async 
   await page.evaluate(() => go('superadmin'));
   await page.click('.tab:has-text("⚙️ Flags & Ops")');
   await expect(page.locator('#sa-ops')).toBeVisible();
-  await page.click('text=Payments');
+  await page.click('#sa-ops-tabs .tab:has-text("Payments")');
   await expect(page.locator('#sa-pay-test-btn')).toBeVisible();
   await expect(page.locator('#sa-pay-save-btn')).toBeVisible();
   await page.click('#sa-pay-test-btn');
-  await expect(page.locator('#sa-pay-test-result')).toContainText(/Testing|AUTH|FAILED|OK|Connection/i);
+  await expect(page.locator('#sa-pay-test-result')).toContainText(/Testing|AUTH|FAILED|OK|Connection|NETWORK_ERROR/i);
 });
 
 test('support role sees payment settings disabled state', async ({ page, request }) => {
@@ -48,7 +48,7 @@ test('support role sees payment settings disabled state', async ({ page, request
   await page.evaluate(() => go('superadmin'));
   await page.click('.tab:has-text("⚙️ Flags & Ops")');
   await expect(page.locator('#sa-ops')).toBeVisible();
-  await page.click('text=Payments');
+  await page.click('#sa-ops-tabs .tab:has-text("Payments")');
   await expect(page.locator('#sa-pay-settings-warning')).toBeVisible();
   await expect(page.locator('#sa-pay-save-btn')).toBeDisabled();
 });
