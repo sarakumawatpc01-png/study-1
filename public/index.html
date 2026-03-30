@@ -965,6 +965,17 @@ function adminHeaders(extra={}){
 function tryParseJson(v,fallback={}){
   try{return JSON.parse(v);}catch(e){return fallback;}
 }
+function toObj(v){
+  if(v&&typeof v==='object')return v;
+  if(typeof v==='string')return tryParseJson(v,{});
+  return {};
+}
+function maskSecret(v){
+  const s=String(v||'').trim();
+  if(!s)return 'not-set';
+  if(s.length<=6)return '••••••';
+  return `${s.slice(0,3)}••••••${s.slice(-2)}`;
+}
 async function submitIssueReport(){
   const title=document.getElementById('reportTitle')?.value?.trim()||'';
   const description=document.getElementById('reportDescription')?.value?.trim()||'';
@@ -1073,6 +1084,8 @@ async function saveConfigUi(){
   }catch(e){showModal('errorMsg',e.message||'Failed to save config');}
 }
 async function savePaymentGatewaySetupUi(){
+  const saveBtn=document.getElementById('sa-pay-save-btn');
+  if(saveBtn?.dataset?.locked==='1'){showModal('errorMsg','Payment setup is limited to ops:manage admins.');return;}
   const provider=document.getElementById('sa-pay-provider')?.value||'razorpay';
   const mode=document.getElementById('sa-pay-mode')?.value||'test';
   const keyId=document.getElementById('sa-pay-key-id')?.value?.trim()||'';
@@ -1085,6 +1098,11 @@ async function savePaymentGatewaySetupUi(){
     await apiFetch('/admin/config',{method:'POST',headers:adminHeaders(),body:JSON.stringify({config_key:'payments.gateway',config_value:gatewayConfig,validation_rule:'json'})});
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save payment gateway setup');}
+}
+async function testPaymentGatewayConnectionUi(){
+  const testBtn=document.getElementById('sa-pay-test-btn');
+  if(testBtn?.dataset?.locked==='1'){showModal('errorMsg','Payment setup is limited to ops:manage admins.');return;}
+  showModal('errorMsg','Test connection stub added. Next step: wire this button to backend health/verify endpoint for gateway ping and webhook signature validation.');
 }
 async function createBackupUi(){
   try{
@@ -1277,35 +1295,54 @@ async function renderSuperAdminSections(){
       </table>`:'<div style="font-size:11px;color:var(--muted);margin-top:6px">No failed webhooks.</div>'}`;
   }
   if(opsEl){
-    const [flags,cfg,cfgHist,backups,ret,rel,jobs]=await Promise.all([loadAdminFlags(),loadAdminConfig(),loadAdminConfigHistory(),loadAdminBackups(),loadAdminRetention(),loadAdminReleaseControls(),loadAdminJobs()]);
+    let canManageOps=true;
+    let cfg=[];
+    try{cfg=await apiFetch('/admin/config');}catch(e){canManageOps=false;}
+    const [flags,cfgHist,backups,ret,rel,jobs]=await Promise.all([loadAdminFlags(),loadAdminConfigHistory(),loadAdminBackups(),loadAdminRetention(),loadAdminReleaseControls(),loadAdminJobs()]);
+    const payRow=(cfg||[]).find(c=>c.config_key==='payments.gateway');
+    const payCfg=toObj(payRow?.config_value);
+    const payProvider=payCfg.provider||'not-set';
+    const payMode=payCfg.mode||'not-set';
+    const payCurrency=payCfg.currency||'INR';
+    const payMaskedKeyId=maskSecret(payCfg.key_id);
+    const payMaskedKeySecret=maskSecret(payCfg.key_secret);
+    const payMaskedWebhook=maskSecret(payCfg.webhook_secret);
     opsEl.innerHTML=`
+      ${canManageOps?'':`<div id="sa-pay-warning" class="alt a-w" style="margin-bottom:8px">Payment setup is read-only/disabled for your account. Required permission: <strong>ops:manage</strong>.</div>`}
       <div class="alt a-s" style="margin-bottom:8px">Flags: ${flags.length} · Config: ${cfg.length} · History: ${cfgHist.length} · Backups: ${backups.length} · Jobs: ${jobs.length}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
-        <input id="sa-flag-key" class="fc" placeholder="flag key">
-        <input id="sa-flag-desc" class="fc" placeholder="description">
-        <select id="sa-flag-scope" class="fc"><option value="global">global</option><option value="cohort">cohort</option><option value="user">user</option></select>
-        <input id="sa-flag-scope-value" class="fc" placeholder="scope value (optional)">
+        <input id="sa-flag-key" class="fc" placeholder="flag key" ${canManageOps?'':'disabled'}>
+        <input id="sa-flag-desc" class="fc" placeholder="description" ${canManageOps?'':'disabled'}>
+        <select id="sa-flag-scope" class="fc" ${canManageOps?'':'disabled'}><option value="global">global</option><option value="cohort">cohort</option><option value="user">user</option></select>
+        <input id="sa-flag-scope-value" class="fc" placeholder="scope value (optional)" ${canManageOps?'':'disabled'}>
       </div>
-      <label class="alt a-i" style="display:inline-block;margin-top:8px"><input id="sa-flag-enabled" type="checkbox"> Enabled</label>
-      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveFeatureFlagUi()">Save Feature Flag</button>
+      <label class="alt a-i" style="display:inline-block;margin-top:8px"><input id="sa-flag-enabled" type="checkbox" ${canManageOps?'':'disabled'}> Enabled</label>
+      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveFeatureFlagUi()" ${canManageOps?'':'disabled'}>Save Feature Flag</button>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-        <input id="sa-cfg-key" class="fc" placeholder="config key">
-        <input id="sa-cfg-val" class="fc" placeholder='config value JSON e.g. {"a":1}'>
+        <input id="sa-cfg-key" class="fc" placeholder="config key" ${canManageOps?'':'disabled'}>
+        <input id="sa-cfg-val" class="fc" placeholder='config value JSON e.g. {"a":1}' ${canManageOps?'':'disabled'}>
       </div>
-      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveConfigUi()">Save Config</button>
-      <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="createBackupUi()">Create Backup Now</button>
+      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="saveConfigUi()" ${canManageOps?'':'disabled'}>Save Config</button>
+      <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="createBackupUi()" ${canManageOps?'':'disabled'}>Create Backup Now</button>
       <div style="margin-top:12px;font-size:12px;font-weight:800">💳 Payment Gateway Setup</div>
+      <div class="alt a-i" style="margin-top:6px">
+        Saved: provider <strong>${escHtml(payProvider)}</strong> · mode <strong>${escHtml(payMode)}</strong> · currency <strong>${escHtml(payCurrency)}</strong><br>
+        key id ${escHtml(payMaskedKeyId)} · key secret ${escHtml(payMaskedKeySecret)} · webhook ${escHtml(payMaskedWebhook)}
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px">
-        <select id="sa-pay-provider" class="fc"><option value="razorpay">Razorpay</option><option value="stripe">Stripe</option><option value="cashfree">Cashfree</option></select>
-        <select id="sa-pay-mode" class="fc"><option value="test">test</option><option value="live">live</option></select>
-        <input id="sa-pay-currency" class="fc" placeholder="Currency (INR)" value="INR">
+        <select id="sa-pay-provider" class="fc" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}><option value="razorpay" ${payProvider==='razorpay'?'selected':''}>Razorpay</option><option value="stripe" ${payProvider==='stripe'?'selected':''}>Stripe</option><option value="cashfree" ${payProvider==='cashfree'?'selected':''}>Cashfree</option></select>
+        <select id="sa-pay-mode" class="fc" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}><option value="test" ${payMode==='test'?'selected':''}>test</option><option value="live" ${payMode==='live'?'selected':''}>live</option></select>
+        <input id="sa-pay-currency" class="fc" placeholder="Currency (INR)" value="${escHtml(payCurrency)}" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-        <input id="sa-pay-key-id" class="fc" placeholder="Gateway key id / publishable key">
-        <input id="sa-pay-key-secret" class="fc" placeholder="Gateway key secret">
+        <input id="sa-pay-key-id" class="fc" placeholder="Gateway key id / publishable key" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
+        <input id="sa-pay-key-secret" class="fc" placeholder="Gateway key secret" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
       </div>
-      <input id="sa-pay-webhook" class="fc" style="margin-top:8px" placeholder="Webhook secret (optional)">
-      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="savePaymentGatewaySetupUi()">Save Payment Gateway Setup</button>
+      <input id="sa-pay-webhook" class="fc" style="margin-top:8px" placeholder="Webhook secret (optional)" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="sa-pay-save-btn" data-locked="${canManageOps?'0':'1'}" class="btn btn-gh btn-sm" style="flex:1" onclick="savePaymentGatewaySetupUi()" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>Save Payment Gateway Setup</button>
+        <button id="sa-pay-test-btn" data-locked="${canManageOps?'0':'1'}" class="btn btn-sm btn-br" style="flex:1" onclick="testPaymentGatewayConnectionUi()" ${canManageOps?'':'disabled aria-disabled="true" aria-describedby="sa-pay-warning"'}>Test Connection (Stub)</button>
+      </div>
       <div style="font-size:11px;color:var(--muted);margin-top:8px">Retention entries: ${ret.length} · Release controls: ${rel.length}</div>`;
   }
   if(compEl){
