@@ -13,7 +13,7 @@ module.exports = defineConfig({
     command: 'node src/server.js',
     port: 3100,
     timeout: 120_000,
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     env: {
       PORT: '3100',
       JWT_SECRET: 'e2e-jwt-secret',

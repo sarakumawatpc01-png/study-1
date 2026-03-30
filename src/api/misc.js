@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
 const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
 const { createClient } = require('redis');
 const { z } = require('zod');
 const db = require('../db');
@@ -21,6 +22,13 @@ const {
 const router = express.Router();
 const publicWebhookRouter = express.Router();
 router.use('/ingest', publicWebhookRouter);
+const publicWebhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+publicWebhookRouter.use(publicWebhookLimiter);
 
 function inferQuestionBug(description, title = '') {
   const text = `${title} ${description}`.toLowerCase();
