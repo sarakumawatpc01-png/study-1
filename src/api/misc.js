@@ -15,6 +15,41 @@ function adminRequired(req, res, next) {
   return next();
 }
 
+// Lightweight rule-based quick triage for question reports so admins get an immediate likely bug signal.
+function inferQuestionBug(description, title = '') {
+  const text = `${title} ${description}`.toLowerCase();
+  if (/\b(option|correct answer|wrong answer|multiple correct)\b/.test(text)) {
+    return {
+      summary: 'Likely answer-key mismatch detected by AI quick triage.',
+      bug: 'Answer key mapping for this question may be incorrect or ambiguous.',
+    };
+  }
+  if (/\b(typo|format|render|latex|equation)\b/.test(text)) {
+    return {
+      summary: 'Likely formatting/content presentation issue detected.',
+      bug: 'Question text/options rendering or formatting likely contains an error.',
+    };
+  }
+  if (/\b(unclear|ambiguous|confusing)\b/.test(text)) {
+    return {
+      summary: 'Likely ambiguity issue in question wording.',
+      bug: 'Question statement is likely ambiguous and may allow multiple interpretations.',
+    };
+  }
+  return {
+    summary: 'AI quick triage could not confidently classify the exact issue.',
+    bug: 'Needs manual expert review for root-cause classification.',
+  };
+}
+
+function parseJsonSafe(raw) {
+  try {
+    return JSON.parse(raw || '{}');
+  } catch (_err) {
+    return {};
+  }
+}
+
 router.get('/notifications', (req, res) => {
   const rows = db
     .prepare('SELECT id, title, body, read_flag, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50')
@@ -103,18 +138,29 @@ router.post('/reports', (req, res) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid report payload' });
   const now = new Date().toISOString();
+  const isQuestion = (parsed.data.category || 'general') === 'question';
+  const triage = isQuestion ? inferQuestionBug(parsed.data.description, parsed.data.title) : null;
   const row = db.prepare(
-    'INSERT INTO reports (user_id, category, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    `INSERT INTO reports
+     (user_id, category, title, description, ai_triage_status, ai_triage_summary, ai_triage_bug, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     req.user.id,
     parsed.data.category || 'general',
     parsed.data.title,
     parsed.data.description,
+    isQuestion ? 'completed' : 'not_applicable',
+    triage ? triage.summary : null,
+    triage ? triage.bug : null,
     'open',
     now,
     now
   );
-  res.status(201).json({ ok: true, id: row.lastInsertRowid });
+  res.status(201).json({
+    ok: true,
+    id: row.lastInsertRowid,
+    ai_triage: triage ? { status: 'completed', summary: triage.summary, bug: triage.bug } : null,
+  });
 });
 
 router.get('/reports', (req, res) => {
@@ -129,7 +175,7 @@ router.get('/reports', (req, res) => {
 router.get('/admin/reports', adminRequired, (req, res) => {
   const rows = db
     .prepare(
-      `SELECT r.id, r.user_id, u.email, u.name, r.category, r.title, r.description, r.status, r.action_taken, r.admin_note, r.created_at, r.updated_at
+      `SELECT r.id, r.user_id, u.email, u.name, r.category, r.title, r.description, r.ai_triage_status, r.ai_triage_summary, r.ai_triage_bug, r.status, r.action_taken, r.admin_note, r.created_at, r.updated_at
        FROM reports r
        JOIN users u ON u.id = r.user_id
        ORDER BY r.created_at DESC`
@@ -162,15 +208,16 @@ router.post('/admin/reports/:id/action', adminRequired, (req, res) => {
 router.get('/admin/content', adminRequired, (_req, res) => {
   const rows = db
     .prepare(
-      'SELECT id, content_type, title, description, data_json, status, updated_by, created_at, updated_at FROM content_library ORDER BY updated_at DESC'
+      'SELECT id, course_key, content_type, title, description, data_json, status, updated_by, created_at, updated_at FROM content_library ORDER BY updated_at DESC'
     )
     .all();
-  res.json(rows.map((r) => ({ ...r, data: JSON.parse(r.data_json || '{}') })));
+  res.json(rows.map((r) => ({ ...r, data: parseJsonSafe(r.data_json) })));
 });
 
 router.post('/admin/content', adminRequired, (req, res) => {
   const schema = z.object({
-    content_type: z.enum(['course', 'book', 'syllabus', 'paper']),
+    course_key: z.string().min(2).max(120),
+    content_type: z.enum(['course', 'book', 'syllabus', 'pyp', 'mock_test']),
     title: z.string().min(2).max(200),
     description: z.string().max(1000).optional().nullable(),
     data: z.record(z.any()).optional(),
@@ -180,8 +227,9 @@ router.post('/admin/content', adminRequired, (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'Invalid content payload' });
   const now = new Date().toISOString();
   const row = db.prepare(
-    'INSERT INTO content_library (content_type, title, description, data_json, status, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO content_library (course_key, content_type, title, description, data_json, status, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
+    parsed.data.course_key,
     parsed.data.content_type,
     parsed.data.title,
     parsed.data.description || null,
@@ -196,6 +244,7 @@ router.post('/admin/content', adminRequired, (req, res) => {
 
 router.post('/admin/content/:id', adminRequired, (req, res) => {
   const schema = z.object({
+    course_key: z.string().min(2).max(120).optional(),
     title: z.string().min(2).max(200).optional(),
     description: z.string().max(1000).optional().nullable(),
     data: z.record(z.any()).optional(),
@@ -207,8 +256,9 @@ router.post('/admin/content/:id', adminRequired, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Content item not found' });
   const dataJson = parsed.data.data !== undefined ? JSON.stringify(parsed.data.data || {}) : existing.data_json;
   db.prepare(
-    'UPDATE content_library SET title = ?, description = ?, data_json = ?, status = ?, updated_by = ?, updated_at = ? WHERE id = ?'
+    'UPDATE content_library SET course_key = ?, title = ?, description = ?, data_json = ?, status = ?, updated_by = ?, updated_at = ? WHERE id = ?'
   ).run(
+    parsed.data.course_key || existing.course_key || '',
     parsed.data.title || existing.title,
     parsed.data.description !== undefined ? parsed.data.description : existing.description,
     dataJson,

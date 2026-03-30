@@ -95,6 +95,9 @@ CREATE TABLE IF NOT EXISTS reports (
   category TEXT NOT NULL DEFAULT 'general',
   title TEXT NOT NULL,
   description TEXT NOT NULL,
+  ai_triage_status TEXT NOT NULL DEFAULT 'pending',
+  ai_triage_summary TEXT,
+  ai_triage_bug TEXT,
   status TEXT NOT NULL DEFAULT 'open',
   action_taken TEXT,
   admin_note TEXT,
@@ -105,6 +108,7 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE TABLE IF NOT EXISTS content_library (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_key TEXT NOT NULL DEFAULT '',
   content_type TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
