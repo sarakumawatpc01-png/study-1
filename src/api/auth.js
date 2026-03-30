@@ -89,6 +89,12 @@ function makeTwoFactorChallenge(user, signalMeta) {
   return { token, code };
 }
 
+function issueToken(user) {
+  return jwt.sign({ userId: user.id, email: user.email, tokenVersion: Number(user.token_version || 0) }, process.env.JWT_SECRET, {
+    expiresIn: '7d',
+  });
+}
+
 const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
@@ -122,18 +128,16 @@ router.post('/signup', authLimiter, async (req, res) => {
   const tx = db.transaction(() => {
     const result = db
       .prepare(
-        'INSERT INTO users (email, password_hash, name, exam, created_at) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO users (email, password_hash, name, exam, role, is_active, token_version, mfa_enabled, created_at) VALUES (?, ?, ?, ?, ?, 1, 0, 0, ?)'
       )
-      .run(email, passwordHash, name, exam, createdAt);
+      .run(email, passwordHash, name, exam, 'student', createdAt);
     db.prepare('INSERT INTO profiles (user_id, mood, readiness_score) VALUES (?, ?, ?)')
       .run(result.lastInsertRowid, 'Normal / Okay', 50);
     return result.lastInsertRowid;
   });
 
   const userId = tx();
-  const token = jwt.sign({ userId, email }, process.env.JWT_SECRET, {
-    expiresIn: '7d',
-  });
+  const token = issueToken({ id: userId, email, token_version: 0 });
   res.status(201).json({ token, user: { id: userId, email, name, exam } });
 });
 
@@ -156,7 +160,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 
   const user = db
-    .prepare('SELECT id, email, name, exam, password_hash FROM users WHERE email = ?')
+    .prepare('SELECT id, email, name, exam, password_hash, token_version, is_active FROM users WHERE email = ?')
     .get(email);
   if (!user) {
     const updated = registerFailure(req, email);
@@ -197,9 +201,9 @@ router.post('/login', loginLimiter, async (req, res) => {
     });
   }
 
-  const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
-    expiresIn: '7d',
-  });
+  if (Number(user.is_active) !== 1) return res.status(403).json({ error: 'Account disabled by admin' });
+  const token = issueToken(user);
+  db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), user.id);
   clearFailures(req, email);
   res.json({
     token,
@@ -220,13 +224,13 @@ router.post('/verify-2fa', loginLimiter, async (req, res) => {
   }
   if (String(code).trim() !== challenge.code) return res.status(401).json({ error: 'Invalid verification code' });
 
-  const user = db.prepare('SELECT id, email, name, exam FROM users WHERE id = ?').get(challenge.userId);
+  const user = db.prepare('SELECT id, email, name, exam, token_version, is_active FROM users WHERE id = ?').get(challenge.userId);
   twoFactorChallenges.delete(token);
   if (!user) return res.status(404).json({ error: 'User not found' });
+  if (Number(user.is_active) !== 1) return res.status(403).json({ error: 'Account disabled by admin' });
 
-  const signed = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
-    expiresIn: '7d',
-  });
+  const signed = issueToken(user);
+  db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), user.id);
   if (challenge.key) loginSignals.delete(challenge.key);
   res.json({ token: signed, user: { id: user.id, email: user.email, name: user.name, exam: user.exam } });
 });
