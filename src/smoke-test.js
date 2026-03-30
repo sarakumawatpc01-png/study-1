@@ -156,6 +156,22 @@ async function run() {
   const mistralGet = await req('GET', '/api/admin/ai/mistral-ocr', null, adminToken);
   if (mistralGet.status !== 200 || mistralGet.body.api_key === 'mistral_test_api_key_123456') throw new Error('Mistral OCR masking failed');
 
+  const openrouterSet = await req('POST', '/api/admin/ai/providers/openrouter', {
+    enabled: true,
+    model: 'openrouter/auto',
+    api_key: 'openrouter_test_api_key_123456',
+    base_url: 'https://openrouter.ai/api/v1',
+  }, adminToken);
+  if (openrouterSet.status !== 200 || !openrouterSet.body.settings?.has_api_key) throw new Error('OpenRouter settings save failed');
+
+  const openrouterGet = await req('GET', '/api/admin/ai/providers/openrouter', null, adminToken);
+  if (openrouterGet.status !== 200 || openrouterGet.body.api_key === 'openrouter_test_api_key_123456') throw new Error('OpenRouter masking failed');
+
+  const allProviders = await req('GET', '/api/admin/ai/providers', null, adminToken);
+  if (allProviders.status !== 200 || !allProviders.body?.openrouter || !allProviders.body?.sarvam || !allProviders.body?.deepseek) {
+    throw new Error('AI providers listing failed');
+  }
+
   const paymentRead = await req('GET', '/api/admin/payments/settings', null, adminToken);
   if (paymentRead.status !== 200 || paymentRead.body.settings?.key_secret === 'secretKey_123456') throw new Error('Payment settings masking failed');
 
@@ -277,6 +293,8 @@ async function run() {
     db.prepare('DELETE FROM ai_model_routes WHERE feature = ?').run('ocr.ingest');
     db.prepare('DELETE FROM config_settings WHERE config_key = ?').run('ai.mistral_ocr');
     db.prepare('DELETE FROM config_history WHERE config_key = ?').run('ai.mistral_ocr');
+    db.prepare("DELETE FROM config_settings WHERE config_key IN ('ai.provider.sarvam','ai.provider.openrouter','ai.provider.deepseek')").run();
+    db.prepare("DELETE FROM config_history WHERE config_key IN ('ai.provider.sarvam','ai.provider.openrouter','ai.provider.deepseek')").run();
   });
   cleanup();
 

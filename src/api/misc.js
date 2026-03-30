@@ -88,6 +88,8 @@ const WEBHOOK_TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
 const PAYMENT_CIRCUIT_KEY_PREFIX = 'payments:circuit';
 const PAYMENT_CONNECTION_RL_KEY_PREFIX = 'payments:connection-tests';
 const PAYMENT_CONFIG_OCR_KEY = 'ai.mistral_ocr';
+const AI_PROVIDER_CONFIG_KEY_PREFIX = 'ai.provider.';
+const AI_GENERAL_PROVIDERS = ['sarvam', 'openrouter', 'deepseek'];
 // Process-local guardrails; replace with shared storage (e.g. Redis) for multi-instance deployments.
 const connectionTestBuckets = new Map();
 const providerCircuitState = new Map();
@@ -213,6 +215,29 @@ function maskedMistralOcrSettings(raw) {
     enabled: Boolean(cfg.enabled),
     base_url: String(cfg.base_url || 'https://api.mistral.ai'),
     model: String(cfg.model || 'mistral-ocr-latest'),
+    api_key: maskValue(cfg.api_key),
+    has_api_key: Boolean(String(cfg.api_key || '').trim()),
+  };
+}
+
+function defaultAiProviderBaseUrl(provider) {
+  const key = String(provider || '').trim().toLowerCase();
+  if (key === 'sarvam') return 'https://api.sarvam.ai';
+  if (key === 'openrouter') return 'https://openrouter.ai/api/v1';
+  if (key === 'deepseek') return 'https://api.deepseek.com';
+  return '';
+}
+
+function aiProviderConfigKey(provider) {
+  return `${AI_PROVIDER_CONFIG_KEY_PREFIX}${provider}`;
+}
+
+function maskedAiProviderSettings(raw, provider) {
+  const cfg = typeof raw === 'string' ? parseJsonSafe(raw, {}) : (raw || {});
+  return {
+    enabled: cfg.enabled !== undefined ? Boolean(cfg.enabled) : true,
+    base_url: String(cfg.base_url || defaultAiProviderBaseUrl(provider)),
+    model: String(cfg.model || ''),
     api_key: maskValue(cfg.api_key),
     has_api_key: Boolean(String(cfg.api_key || '').trim()),
   };
@@ -1242,6 +1267,72 @@ router.post('/admin/ai/mistral-ocr', requirePermission('ai:manage'), (req, res) 
   ).run('ocr.ingest', parsed.data.model, null, req.user.id, now);
   createAuditLog({ actor: req.user, action: 'ai_mistral_ocr_update', targetType: 'ai_route', targetId: 'ocr.ingest', details: { enabled: parsed.data.enabled !== false, model: parsed.data.model } });
   return res.json({ ok: true, settings: maskedMistralOcrSettings(next) });
+});
+
+router.get('/admin/ai/providers', requirePermission('ai:manage'), (_req, res) => {
+  const rows = db.prepare(
+    `SELECT config_key, config_value FROM config_settings
+      WHERE config_key IN (${AI_GENERAL_PROVIDERS.map(() => '?').join(',')})`
+  ).all(...AI_GENERAL_PROVIDERS.map((p) => aiProviderConfigKey(p)));
+  const byKey = new Map(rows.map((r) => [r.config_key, r.config_value]));
+  const out = {};
+  for (const provider of AI_GENERAL_PROVIDERS) {
+    out[provider] = maskedAiProviderSettings(byKey.get(aiProviderConfigKey(provider)) || '{}', provider);
+  }
+  return res.json(out);
+});
+
+router.get('/admin/ai/providers/:provider', requirePermission('ai:manage'), (req, res) => {
+  const provider = String(req.params.provider || '').trim().toLowerCase();
+  if (!AI_GENERAL_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Unsupported AI provider' });
+  const row = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(aiProviderConfigKey(provider));
+  return res.json(maskedAiProviderSettings(row?.config_value || '{}', provider));
+});
+
+router.post('/admin/ai/providers/:provider', requirePermission('ai:manage'), (req, res) => {
+  const provider = String(req.params.provider || '').trim().toLowerCase();
+  if (!AI_GENERAL_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Unsupported AI provider' });
+  const schema = z.object({
+    enabled: z.boolean().optional(),
+    base_url: z.string().url().max(200).optional(),
+    model: z.string().min(2).max(120),
+    api_key: z.string().min(6).max(400).optional(),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid AI provider payload' });
+  const configKey = aiProviderConfigKey(provider);
+  const prev = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(configKey);
+  const prevCfg = parseJsonSafe(prev?.config_value || '{}', {});
+  const nextPayload = {
+    enabled: parsed.data.enabled !== undefined ? parsed.data.enabled : (prevCfg.enabled !== undefined ? Boolean(prevCfg.enabled) : true),
+    base_url: parsed.data.base_url || String(prevCfg.base_url || defaultAiProviderBaseUrl(provider)),
+    model: parsed.data.model,
+    api_key: parsed.data.api_key || String(prevCfg.api_key || ''),
+  };
+  if (!String(nextPayload.api_key || '').trim()) {
+    return res.status(400).json({ error: 'API key is required for first-time setup' });
+  }
+  const now = nowIso();
+  const next = JSON.stringify(nextPayload);
+  db.prepare(
+    `INSERT INTO config_settings (config_key, config_value, validation_rule, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, validation_rule = excluded.validation_rule, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+  ).run(configKey, next, 'json', req.user.id, now);
+  db.prepare('INSERT INTO config_history (config_key, old_value, new_value, changed_by, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(configKey, prev?.config_value || null, next, req.user.id, now);
+  createAuditLog({
+    actor: req.user,
+    action: 'ai_provider_update',
+    targetType: 'ai_provider',
+    targetId: provider,
+    details: {
+      provider,
+      enabled: nextPayload.enabled,
+      model: nextPayload.model,
+    },
+  });
+  return res.json({ ok: true, provider, settings: maskedAiProviderSettings(nextPayload, provider) });
 });
 
 router.post('/ai/feedback', (req, res) => {

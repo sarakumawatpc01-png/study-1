@@ -22,6 +22,11 @@ function run() {
   assert(html.includes('/admin/webhooks/events'), 'Superadmin UI should fetch webhook timeline endpoint');
   assert(html.includes('retryWebhookUi('), 'Superadmin UI should expose webhook retry action');
   assert(html.includes('/admin/ai/mistral-ocr'), 'Superadmin UI should expose Mistral OCR config endpoint');
+  assert(html.includes('/admin/ai/providers'), 'Superadmin UI should expose multi-provider AI config endpoint');
+  assert(html.includes('saveAiProviderUi('), 'Superadmin UI should expose save action for AI providers');
+  assert(html.includes('openrouter'), 'Superadmin AI UI should include OpenRouter provider');
+  assert(html.includes('deepseek'), 'Superadmin AI UI should include DeepSeek provider');
+  assert(html.includes('sarvam'), 'Superadmin AI UI should include Sarvam provider');
   assert(html.includes('/admin/content/upload-ocr'), 'Superadmin UI should expose OCR content upload endpoint');
 
   console.log('Superadmin UI integration checks passed');

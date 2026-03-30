@@ -937,6 +937,7 @@ async function loadAdminAiGuardrails(){return apiTry('/admin/ai/guardrails',{},n
 async function loadAdminAiPrompts(){return apiTry('/admin/ai/prompts',{},[]);}
 async function loadAdminAiRoutes(){return apiTry('/admin/ai/routes',{},[]);}
 async function loadAdminMistralOcr(){return apiTry('/admin/ai/mistral-ocr',{},null);}
+async function loadAdminAiProviders(){return apiTry('/admin/ai/providers',{},{});}
 async function loadAdminAiFeedback(){return apiTry('/admin/ai/feedback-queue',{},[]);}
 async function loadAdminApiKeys(){return apiTry('/admin/api/keys',{},[]);}
 async function loadAdminApiErrors(){return apiTry('/admin/api/errors',{},[]);}
@@ -1093,6 +1094,25 @@ async function saveMistralOcrUi(){
     await apiFetch('/admin/ai/mistral-ocr',{method:'POST',headers:adminHeaders(),body:JSON.stringify({enabled,model,api_key,base_url})});
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save Mistral OCR settings');}
+}
+function defaultAiProviderBaseUrlUi(provider){
+  const p=String(provider||'').trim().toLowerCase();
+  if(p==='sarvam')return 'https://api.sarvam.ai';
+  if(p==='openrouter')return 'https://openrouter.ai/api/v1';
+  if(p==='deepseek')return 'https://api.deepseek.com';
+  return '';
+}
+async function saveAiProviderUi(provider){
+  const p=String(provider||'').trim().toLowerCase();
+  const enabled=document.getElementById(`sa-ai-provider-enabled-${p}`)?.checked??true;
+  const model=document.getElementById(`sa-ai-provider-model-${p}`)?.value?.trim()||'';
+  const api_key=document.getElementById(`sa-ai-provider-key-${p}`)?.value?.trim()||'';
+  const base_url=document.getElementById(`sa-ai-provider-base-${p}`)?.value?.trim()||defaultAiProviderBaseUrlUi(p);
+  if(!model){showModal('errorMsg',`${p} model is required`);return;}
+  try{
+    await apiFetch(`/admin/ai/providers/${p}`,{method:'POST',headers:adminHeaders(),body:JSON.stringify({enabled,model,api_key,base_url})});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||`Failed to save ${p} settings`);}
 }
 async function createApiKeyUi(){
   const name=document.getElementById('sa-key-name')?.value?.trim()||'';
@@ -1390,9 +1410,23 @@ async function renderSuperAdminSections(){
     </table>`;
   }
   if(aiEl){
-    const [g,p,r,f,ocr]=await Promise.all([loadAdminAiGuardrails(),loadAdminAiPrompts(),loadAdminAiRoutes(),loadAdminAiFeedback(),loadAdminMistralOcr()]);
+    const [g,p,r,f,ocr,providerCfg]=await Promise.all([loadAdminAiGuardrails(),loadAdminAiPrompts(),loadAdminAiRoutes(),loadAdminAiFeedback(),loadAdminMistralOcr(),loadAdminAiProviders()]);
     const gSafe=g||{};
     const ocrSafe=ocr||{};
+    const aiProviders=['sarvam','openrouter','deepseek'];
+    const providersHtml=aiProviders.map((provider)=>{
+      const cfg=(providerCfg&&providerCfg[provider])||{};
+      const defaultBase=defaultAiProviderBaseUrlUi(provider);
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px">
+        <div style="font-size:12px;font-weight:700;text-transform:capitalize">${escHtml(provider)}</div>
+        <label class="alt a-s" style="margin-top:4px;display:block"><input id="sa-ai-provider-enabled-${provider}" type="checkbox" ${cfg.enabled!==false?'checked':''}> Enabled</label>
+        <input id="sa-ai-provider-base-${provider}" class="fc" placeholder="Base URL" value="${escHtml(cfg.base_url||defaultBase)}">
+        <input id="sa-ai-provider-model-${provider}" class="fc" placeholder="Model" value="${escHtml(cfg.model||'')}">
+        <input id="sa-ai-provider-key-${provider}" class="fc" placeholder="API key (enter to update)" value="">
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">Saved key: ${escHtml(cfg.api_key||'not-set')}</div>
+        <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="saveAiProviderUi('${provider}')">Save ${provider} Setup</button>
+      </div>`;
+    }).join('');
     aiEl.innerHTML=`
       <div class="alt a-i" style="margin-bottom:8px">AI Prompts: ${p.length} · Routes: ${r.length} · Feedback queue: ${f.length}</div>
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
@@ -1423,7 +1457,9 @@ async function renderSuperAdminSections(){
         <input id="sa-ocr-api-key" class="fc" placeholder="API key (enter to update)" value="">
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">Saved key: ${escHtml(ocrSafe.api_key||'not-set')}</div>
-      <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="saveMistralOcrUi()">Save Mistral OCR Setup</button>`;
+      <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="saveMistralOcrUi()">Save Mistral OCR Setup</button>
+      <div class="alt a-s" style="margin-top:12px">General AI provider setup (for testing/provider switch)</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px">${providersHtml}</div>`;
   }
   if(apiEl){
     const keys=await loadAdminApiKeys();
