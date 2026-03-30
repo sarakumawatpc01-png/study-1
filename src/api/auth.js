@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
 const db = require('../db');
@@ -8,6 +9,85 @@ const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 250, standardHeaders: true, legacyHeaders: false });
+
+const loginSignals = new Map();
+const captchaChallenges = new Map();
+const twoFactorChallenges = new Map();
+
+const SOFT_WINDOW_MS = 15 * 60 * 1000;
+const CAPTCHA_AFTER_FAILURES = 3;
+const TWO_FACTOR_AFTER_FAILURES = 5;
+const CAPTCHA_TTL_MS = 5 * 60 * 1000;
+const TWO_FACTOR_TTL_MS = 5 * 60 * 1000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function clientIp(req) {
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function signalKey(req, email) {
+  return `${String(email || '').toLowerCase()}|${clientIp(req)}`;
+}
+
+function getSignal(req, email) {
+  const key = signalKey(req, email);
+  const now = Date.now();
+  const existing = loginSignals.get(key);
+  if (!existing || now - existing.lastFailureAt > SOFT_WINDOW_MS) {
+    const fresh = { failures: 0, lastFailureAt: 0 };
+    loginSignals.set(key, fresh);
+    return fresh;
+  }
+  return existing;
+}
+
+function registerFailure(req, email) {
+  const signal = getSignal(req, email);
+  signal.failures += 1;
+  signal.lastFailureAt = Date.now();
+  return signal;
+}
+
+function clearFailures(req, email) {
+  loginSignals.delete(signalKey(req, email));
+}
+
+function makeCaptchaChallenge() {
+  const a = crypto.randomInt(2, 10);
+  const b = crypto.randomInt(2, 10);
+  const token = `cap_${crypto.randomUUID()}`;
+  captchaChallenges.set(token, { answer: String(a + b), expiresAt: Date.now() + CAPTCHA_TTL_MS });
+  return { token, question: `${a} + ${b} = ?` };
+}
+
+function checkCaptcha(token, answer) {
+  const row = captchaChallenges.get(String(token || ''));
+  if (!row) return false;
+  if (row.expiresAt <= Date.now()) {
+    captchaChallenges.delete(String(token || ''));
+    return false;
+  }
+  const ok = String(answer || '').trim() === row.answer;
+  if (ok) captchaChallenges.delete(String(token || ''));
+  return ok;
+}
+
+function makeTwoFactorChallenge(user, signalMeta) {
+  const code = String(crypto.randomInt(100000, 1000000));
+  const token = `tfa_${crypto.randomUUID()}`;
+  twoFactorChallenges.set(token, {
+    code,
+    userId: user.id,
+    email: user.email,
+    expiresAt: Date.now() + TWO_FACTOR_TTL_MS,
+    key: signalMeta?.key || '',
+  });
+  return { token, code };
+}
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -19,6 +99,13 @@ const signupSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  captcha_token: z.string().optional(),
+  captcha_answer: z.string().optional(),
+});
+
+const verifyTwoFactorSchema = z.object({
+  two_factor_token: z.string().min(1),
+  code: z.string().min(4).max(8),
 });
 
 router.post('/signup', authLimiter, async (req, res) => {
@@ -50,27 +137,112 @@ router.post('/signup', authLimiter, async (req, res) => {
   res.status(201).json({ token, user: { id: userId, email, name, exam } });
 });
 
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
 
-  const { email, password } = parsed.data;
+  const { email, password, captcha_token: captchaToken, captcha_answer: captchaAnswer } = parsed.data;
+  const signal = getSignal(req, email);
+  const shouldChallengeCaptcha = signal.failures >= CAPTCHA_AFTER_FAILURES;
+  const hasValidCaptcha = !shouldChallengeCaptcha || checkCaptcha(captchaToken, captchaAnswer);
+  if (!hasValidCaptcha) {
+    const captcha = makeCaptchaChallenge();
+    return res.status(400).json({
+      error: 'Captcha required',
+      warning: 'Multiple attempts detected. Please verify you are human to continue.',
+      captchaRequired: true,
+      captcha,
+    });
+  }
+
   const user = db
     .prepare('SELECT id, email, name, exam, password_hash FROM users WHERE email = ?')
     .get(email);
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user) {
+    const updated = registerFailure(req, email);
+    await sleep(Math.min(2 ** Math.min(updated.failures, 6) * 120, 5000));
+    const captcha = updated.failures >= CAPTCHA_AFTER_FAILURES ? makeCaptchaChallenge() : null;
+    return res.status(401).json({
+      error: 'Invalid credentials',
+      warning: updated.failures >= CAPTCHA_AFTER_FAILURES
+        ? 'Security check enabled after repeated incorrect passwords.'
+        : 'Incorrect email or password.',
+      captchaRequired: Boolean(captcha),
+      ...(captcha ? { captcha } : {}),
+    });
+  }
 
   const ok = await bcrypt.compare(password, user.password_hash);
-  if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!ok) {
+    const updated = registerFailure(req, email);
+    await sleep(Math.min(2 ** Math.min(updated.failures, 6) * 120, 5000));
+    const captcha = updated.failures >= CAPTCHA_AFTER_FAILURES ? makeCaptchaChallenge() : null;
+    return res.status(401).json({
+      error: 'Invalid credentials',
+      warning: updated.failures >= CAPTCHA_AFTER_FAILURES
+        ? 'Security check enabled after repeated incorrect passwords.'
+        : 'Incorrect email or password.',
+      captchaRequired: Boolean(captcha),
+      ...(captcha ? { captcha } : {}),
+    });
+  }
+
+  if (signal.failures >= TWO_FACTOR_AFTER_FAILURES) {
+    const challenge = makeTwoFactorChallenge(user, { key: signalKey(req, email) });
+    return res.status(202).json({
+      requiresTwoFactor: true,
+      twoFactorToken: challenge.token,
+      message: 'Additional verification required for your safety.',
+      ...(process.env.NODE_ENV !== 'production' ? { demoCode: challenge.code } : {}),
+    });
+  }
 
   const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
     expiresIn: '7d',
   });
+  clearFailures(req, email);
   res.json({
     token,
     user: { id: user.id, email: user.email, name: user.name, exam: user.exam },
   });
 });
+
+router.post('/verify-2fa', loginLimiter, async (req, res) => {
+  const parsed = verifyTwoFactorSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+
+  const { two_factor_token: token, code } = parsed.data;
+  const challenge = twoFactorChallenges.get(token);
+  if (!challenge) return res.status(400).json({ error: 'Verification expired. Please login again.' });
+  if (challenge.expiresAt <= Date.now()) {
+    twoFactorChallenges.delete(token);
+    return res.status(400).json({ error: 'Verification expired. Please login again.' });
+  }
+  if (String(code).trim() !== challenge.code) return res.status(401).json({ error: 'Invalid verification code' });
+
+  const user = db.prepare('SELECT id, email, name, exam FROM users WHERE id = ?').get(challenge.userId);
+  twoFactorChallenges.delete(token);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const signed = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
+    expiresIn: '7d',
+  });
+  if (challenge.key) loginSignals.delete(challenge.key);
+  res.json({ token: signed, user: { id: user.id, email: user.email, name: user.name, exam: user.exam } });
+});
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, signal] of loginSignals.entries()) {
+    if (now - signal.lastFailureAt > SOFT_WINDOW_MS) loginSignals.delete(key);
+  }
+  for (const [token, row] of captchaChallenges.entries()) {
+    if (row.expiresAt <= now) captchaChallenges.delete(token);
+  }
+  for (const [token, row] of twoFactorChallenges.entries()) {
+    if (row.expiresAt <= now) twoFactorChallenges.delete(token);
+  }
+}, 60 * 1000).unref();
 
 router.get('/me', authRequired, (req, res) => {
   const user = db

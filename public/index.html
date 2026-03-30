@@ -641,6 +641,8 @@ let activeTask=null,focusTicker=null,pendingSkipTaskIndex=null,pendingEarlyTaskI
 let authToken=localStorage.getItem('study_token')||'';
 let currentUser=null;
 let serverAnalytics=null;
+let securityPromptResolver=null;
+const MAX_SECURITY_RETRY_ATTEMPTS=8;
 const FOCUS_STATE_KEY='exambhai_active_task_v1';
 const API_BASE='/api';
 
@@ -649,11 +651,94 @@ async function apiFetch(path,options={}){
   if(authToken)headers.Authorization=`Bearer ${authToken}`;
   const res=await fetch(`${API_BASE}${path}`,{...options,headers});
   const data=await res.json().catch(()=>({}));
-  if(!res.ok)throw new Error(data.error||`Request failed: ${res.status}`);
+  if(!res.ok){
+    const err=new Error(data.error||`Request failed: ${res.status}`);
+    err.status=res.status;
+    err.data=data;
+    throw err;
+  }
   return data;
 }
 async function apiTry(path,options={},fallback=null){
   try{return await apiFetch(path,options);}catch(e){return fallback;}
+}
+function resolveSecurityPrompt(value){
+  if(!securityPromptResolver)return;
+  const done=securityPromptResolver;
+  securityPromptResolver=null;
+  done(value);
+}
+async function promptSecurityInput({icon='🔐',title='Security Check',message='',inputLabel='Enter value',placeholder='',button='Continue',note=''}){
+  if(securityPromptResolver)resolveSecurityPrompt(null);
+  return new Promise((resolve)=>{
+    securityPromptResolver=resolve;
+    document.getElementById('moInner').innerHTML=`
+      <div class="mo-hd"><h3>${icon} ${title}</h3><button class="mo-x" onclick="closeMo()">✕</button></div>
+      ${message?`<div class="alt a-w" style="margin-bottom:10px">${message}</div>`:''}
+      <div class="fg">
+        <label for="security-input">${inputLabel}</label>
+        <input id="security-input" class="fc" placeholder="${placeholder}" autocomplete="off">
+      </div>
+      ${note?`<div style="font-size:11px;color:var(--muted);margin-top:-2px;margin-bottom:11px">${note}</div>`:''}
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-gh" style="flex:1" onclick="closeMo()">Cancel</button>
+        <button class="btn btn-br" style="flex:1" onclick="submitSecurityInput()">${button}</button>
+      </div>`;
+    document.getElementById('mo').classList.add('on');
+    setTimeout(()=>document.getElementById('security-input')?.focus(),0);
+  });
+}
+function submitSecurityInput(){
+  const input=document.getElementById('security-input');
+  const value=input?.value?.trim()||'';
+  if(!value)return;
+  document.getElementById('mo').classList.remove('on');
+  resolveSecurityPrompt(value);
+}
+async function loginWithSecurity(payload){
+  let captchaPayload=null;
+  let warningText='';
+  for(let attempt=0;attempt<MAX_SECURITY_RETRY_ATTEMPTS;attempt++){
+    const body={email:payload.email,password:payload.password};
+    if(captchaPayload){
+      const captchaAnswer=await promptSecurityInput({
+        icon:'🛡️',
+        title:'Quick Security Check',
+        message:warningText||'Please solve this to continue login safely.',
+        inputLabel:captchaPayload.question,
+        placeholder:'Type your answer',
+        button:'Verify & Continue',
+      });
+      if(!captchaAnswer)throw new Error('Login cancelled');
+      body.captcha_token=captchaPayload.token;
+      body.captcha_answer=captchaAnswer;
+    }
+    try{
+      const login=await apiFetch('/auth/login',{method:'POST',body:JSON.stringify(body)});
+      if(login?.requiresTwoFactor){
+        const code=await promptSecurityInput({
+          icon:'📱',
+          title:'2-Step Verification',
+          message:login.message||'Enter the verification code to continue.',
+          inputLabel:'Enter 6-digit code',
+          placeholder:'123456',
+          button:'Verify',
+          note:login.demoCode?`Demo code: ${login.demoCode}`:'',
+        });
+        if(!code)throw new Error('Verification cancelled');
+        return apiFetch('/auth/verify-2fa',{method:'POST',body:JSON.stringify({two_factor_token:login.twoFactorToken,code})});
+      }
+      return login;
+    }catch(e){
+      if(e?.data?.captchaRequired&&e?.data?.captcha){
+        captchaPayload=e.data.captcha;
+        warningText=e.data.warning||'Please complete the quick security check.';
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error('Security verification failed');
 }
 async function ensureAuth(){
   if(authToken){
@@ -665,7 +750,7 @@ async function ensureAuth(){
   const demoEmail=localStorage.getItem('study_demo_email')||`rahul.${Date.now()}@demo.local`;
   const payload={email:demoEmail,password:'StrongPass123',name:'Rahul Kumar',exam:'SSC CGL 2026'};
   try{
-    const login=await apiFetch('/auth/login',{method:'POST',body:JSON.stringify({email:payload.email,password:payload.password})});
+    const login=await loginWithSecurity({email:payload.email,password:payload.password});
     authToken=login.token;localStorage.setItem('study_token',authToken);currentUser=login.user;return currentUser;
   }catch(e){
     const signup=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify(payload)});
@@ -859,7 +944,7 @@ window.addEventListener('beforeunload',()=>{
   }
   saveTasks();saveFocusState(null);
 });
-function closeMo(){document.getElementById('mo').classList.remove('on');}
+function closeMo(){document.getElementById('mo').classList.remove('on');resolveSecurityPrompt(null);}
 function swTab(el,id){const p=el.closest('.sec')||document.getElementById('mc');p.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));p.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));el.classList.add('on');const t=document.getElementById(id);if(t)t.classList.add('on');}
 window.completeActiveTask=completeActiveTask;
 window.exitFocusEarly=exitFocusEarly;
