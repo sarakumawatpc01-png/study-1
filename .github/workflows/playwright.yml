@@ -27,11 +27,20 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      - name: Run smoke and integration checks
+        run: npm test
+        env:
+          JWT_SECRET: ci-jwt-secret
+          AUDIT_SIGNING_SECRET: ci-audit-secret
+          PAYMENT_CONFIG_ENCRYPTION_KEY: ci-payment-secret
+          ADMIN_REQUIRE_MFA: "false"
+
       - name: Run Playwright tests
         run: npm run test:e2e
         env:
           JWT_SECRET: ci-jwt-secret
           AUDIT_SIGNING_SECRET: ci-audit-secret
+          PAYMENT_CONFIG_ENCRYPTION_KEY: ci-payment-secret
           ADMIN_REQUIRE_MFA: "false"
 
       - name: Upload Playwright report and traces/videos

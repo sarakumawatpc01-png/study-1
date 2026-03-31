@@ -3,8 +3,18 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'smoke-test-secret';
 process.env.AUDIT_SIGNING_SECRET = process.env.AUDIT_SIGNING_SECRET || 'smoke-test-audit-secret';
+process.env.PAYMENT_CONFIG_ENCRYPTION_KEY = process.env.PAYMENT_CONFIG_ENCRYPTION_KEY || 'smoke-test-payment-key';
+process.env.DATA_ROOT_DIR = process.env.DATA_ROOT_DIR || `/tmp/study-smoke-${process.pid}`;
 const app = require('./server');
 const db = require('./db');
+const EXPECTED_ERROR_PATTERNS = [/Failed to parse response JSON for/];
+
+const originalConsoleError = console.error;
+const capturedErrors = [];
+console.error = (...args) => {
+  capturedErrors.push(args.map((v) => String(v)).join(' '));
+  originalConsoleError(...args);
+};
 
 function req(method, path, body, token, headers = {}) {
   const payload = body ? JSON.stringify(body) : null;
@@ -280,6 +290,9 @@ async function run() {
   if (audits.status !== 200 || !Array.isArray(audits.body)) throw new Error('Audit endpoint failed');
   if (!audits.body.some((a) => a.action === 'payment_gateway_update')) throw new Error('Payment audit enrichment missing');
 
+  const unexpectedErrors = capturedErrors.filter((line) => !EXPECTED_ERROR_PATTERNS.some((pattern) => pattern.test(line)));
+  if (unexpectedErrors.length) throw new Error(`Unexpected console.error logs: ${unexpectedErrors.join(' | ')}`);
+
   const cleanup = db.transaction(() => {
     db.prepare("DELETE FROM users WHERE email IN (?, ?)").run(testEmail, adminEmail);
     db.prepare('DELETE FROM content_library WHERE title = ?').run('Quant Basics');
@@ -299,10 +312,12 @@ async function run() {
   cleanup();
 
   await new Promise((resolve) => server.close(resolve));
+  console.error = originalConsoleError;
   console.log('Smoke test passed');
 }
 
 run().catch((e) => {
+  console.error = originalConsoleError;
   console.error(e.message);
   process.exit(1);
 });
