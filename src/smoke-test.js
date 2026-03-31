@@ -7,6 +7,7 @@ process.env.PAYMENT_CONFIG_ENCRYPTION_KEY = process.env.PAYMENT_CONFIG_ENCRYPTIO
 process.env.DATA_ROOT_DIR = process.env.DATA_ROOT_DIR || `/tmp/study-smoke-${process.pid}`;
 const app = require('./server');
 const db = require('./db');
+const EXPECTED_ERROR_PATTERNS = [/Failed to parse response JSON for/];
 
 const originalConsoleError = console.error;
 const capturedErrors = [];
@@ -289,7 +290,7 @@ async function run() {
   if (audits.status !== 200 || !Array.isArray(audits.body)) throw new Error('Audit endpoint failed');
   if (!audits.body.some((a) => a.action === 'payment_gateway_update')) throw new Error('Payment audit enrichment missing');
 
-  const unexpectedErrors = capturedErrors.filter((line) => !/Failed to parse response JSON for|Unexpected console\.error logs/.test(line));
+  const unexpectedErrors = capturedErrors.filter((line) => !EXPECTED_ERROR_PATTERNS.some((pattern) => pattern.test(line)));
   if (unexpectedErrors.length) throw new Error(`Unexpected console.error logs: ${unexpectedErrors.join(' | ')}`);
 
   const cleanup = db.transaction(() => {
