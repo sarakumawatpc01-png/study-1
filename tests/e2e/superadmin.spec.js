@@ -51,4 +51,68 @@ test('support role sees payment settings disabled state', async ({ page, request
   await page.click('#sa-ops-tabs .tab:has-text("Payments")');
   await expect(page.locator('#sa-pay-settings-warning')).toBeVisible();
   await expect(page.locator('#sa-pay-save-btn')).toBeDisabled();
+
+  const supportSettings = await request.get('/api/admin/payments/settings', {
+    headers: { authorization: `Bearer ${support.token}` },
+  });
+  expect(supportSettings.status()).toBe(403);
+});
+
+test('payment webhook validation handles invalid signature and replay edge cases', async ({ request }) => {
+  const admin = await signupAndPromote(request, 'admin');
+  const auth = { authorization: `Bearer ${admin.token}` };
+  const invalidEventId = `evt-invalid-${crypto.randomUUID()}`;
+  const validEventId = `evt-valid-${crypto.randomUUID()}`;
+  const payload = { id: validEventId, amount: 100 };
+
+  const saveSettings = await request.post('/api/admin/payments/settings', {
+    headers: auth,
+    data: {
+      provider: 'razorpay',
+      mode: 'test',
+      currency: 'INR',
+      key_id: 'rzp_test_AbCdEf5678',
+      key_secret: 'rzp_test_edge_secret',
+      webhook_secret: 'whsec_edge_secret',
+    },
+  });
+  expect(saveSettings.status()).toBe(200);
+
+  const invalidAdminValidation = await request.post('/api/admin/payments/webhooks/validate', {
+    headers: auth,
+    data: {
+      provider: 'razorpay',
+      event_id: invalidEventId,
+      event_name: 'payment.captured',
+      signature: 'invalid-signature',
+      payload,
+    },
+  });
+  expect(invalidAdminValidation.status()).toBe(400);
+  const invalidBody = await invalidAdminValidation.json();
+  expect(invalidBody.ok).toBe(false);
+  expect(invalidBody.status).toBe('signature-invalid');
+
+  const payloadText = JSON.stringify(payload);
+  const validSignature = crypto.createHmac('sha256', 'whsec_edge_secret').update(payloadText).digest('hex');
+  const validPublicValidation = await request.post('/api/ingest/payments/webhooks/validate', {
+    data: {
+      provider: 'razorpay',
+      event_id: validEventId,
+      event_name: 'payment.captured',
+      signature: validSignature,
+      payload,
+    },
+  });
+  expect(validPublicValidation.status()).toBe(200);
+  const replayPublicValidation = await request.post('/api/ingest/payments/webhooks/validate', {
+    data: {
+      provider: 'razorpay',
+      event_id: validEventId,
+      event_name: 'payment.captured',
+      signature: validSignature,
+      payload,
+    },
+  });
+  expect(replayPublicValidation.status()).toBe(409);
 });

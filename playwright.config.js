@@ -18,6 +18,7 @@ module.exports = defineConfig({
       PORT: '3100',
       JWT_SECRET: 'e2e-jwt-secret',
       AUDIT_SIGNING_SECRET: 'e2e-audit-secret',
+      PAYMENT_CONFIG_ENCRYPTION_KEY: 'e2e-jwt-secret',
       ADMIN_REQUIRE_MFA: 'false',
     },
   },
