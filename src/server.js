@@ -38,8 +38,43 @@ function getReleaseControls() {
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is required. Set it in environment variables or .env file.');
 }
+const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+if (isProduction) {
+  if (!process.env.AUDIT_SIGNING_SECRET) {
+    throw new Error('AUDIT_SIGNING_SECRET is required in production.');
+  }
+  if (!process.env.PAYMENT_CONFIG_ENCRYPTION_KEY) {
+    throw new Error('PAYMENT_CONFIG_ENCRYPTION_KEY is required in production.');
+  }
+}
+
+function parseAllowlist(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function parseTrustProxy(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  // Safe default: trust only local reverse proxies unless explicitly overridden.
+  if (!value) return 'loopback';
+  if (value === 'true') return 1;
+  if (value === 'false') return false;
+  if (/^\d+$/.test(value)) return Number(value);
+  return raw;
+}
+
+const corsAllowedOrigins = parseAllowlist(process.env.CORS_ALLOWED_ORIGINS);
+if (isProduction && corsAllowedOrigins.length === 0) {
+  throw new Error('CORS_ALLOWED_ORIGINS is required in production and must include one or more origins.');
+}
+function isAllowedCorsOrigin(origin) {
+  return !origin || !isProduction || corsAllowedOrigins.includes(origin);
+}
 
 const app = express();
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -51,19 +86,36 @@ app.use(
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         imgSrc: ["'self'", 'data:'],
         connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
       },
     },
   })
 );
-app.use(cors());
-app.use(express.json({ limit: '1mb' }));
-app.use(morgan('combined'));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (isAllowedCorsOrigin(origin)) return callback(null, true);
+      return callback(new Error('CORS_ORIGIN_DENIED'));
+    },
+  })
+);
+app.use((err, _req, res, next) => {
+  if (err?.message === 'CORS_ORIGIN_DENIED') return res.status(403).json({ error: 'Origin not allowed' });
+  return next(err);
+});
+const jsonLimit = String(process.env.JSON_BODY_LIMIT || '2mb');
+app.use(express.json({ limit: jsonLimit }));
+morgan.token('safe-original-url', (req) => String(req.originalUrl || req.url || '/').split('?')[0]);
+app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :safe-original-url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'));
 app.use(
   rateLimit({
     windowMs: 60 * 1000,
     max: 120,
     standardHeaders: true,
     legacyHeaders: false,
+    message: { error: 'Too many requests. Please try again later.' },
   })
 );
 
@@ -94,7 +146,16 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'study-app' }));
+app.get('/health', (_req, res) => {
+  let dbOk = true;
+  try {
+    db.prepare('SELECT 1').get();
+  } catch (_err) {
+    dbOk = false;
+  }
+  const status = dbOk ? 200 : 503;
+  res.status(status).json({ ok: dbOk, service: 'study-app', db: dbOk ? 'ok' : 'down' });
+});
 
 app.use('/api/auth', authApi);
 app.use('/api/tasks', tasksApi);
@@ -109,10 +170,30 @@ app.get('*', (_req, res) => {
 
 const port = Number(process.env.PORT || 3000);
 if (require.main === module) {
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     // eslint-disable-next-line no-console
     console.log(`Server running on http://localhost:${port}`);
   });
+
+  const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10000;
+  let shuttingDown = false;
+  function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    // eslint-disable-next-line no-console
+    console.log(`Received ${signal}. Shutting down gracefully...`);
+    const forceClose = setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.error('Force exiting after shutdown timeout');
+      process.exit(1);
+    }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+    server.close(() => {
+      clearTimeout(forceClose);
+      process.exit(0);
+    });
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = app;
