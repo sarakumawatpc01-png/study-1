@@ -13,7 +13,7 @@ Create a `.env` file (do not commit it) with at least:
 
 Recommended:
 
-- `TRUST_PROXY=true` (required behind Nginx Proxy Manager)
+- `TRUST_PROXY=1` (required behind Nginx Proxy Manager)
 - `JSON_BODY_LIMIT=1mb`
 - `ADMIN_REQUIRE_MFA=true`
 - `ADMIN_IP_ALLOWLIST=<comma separated IPs>` (optional)

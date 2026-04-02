@@ -12,14 +12,14 @@ const router = express.Router();
 const defaultLimiterMessage = { error: 'Too many requests. Please try again later.' };
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: defaultLimiterMessage,
 });
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   message: defaultLimiterMessage,
