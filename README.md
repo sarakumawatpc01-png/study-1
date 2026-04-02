@@ -34,7 +34,11 @@ Production-ready full-stack implementation for the EXAMBHAI plan.
    ```bash
    cp .env.example .env
    ```
-3. Update `.env` with a strong `JWT_SECRET`.
+3. Update `.env` with strong values:
+   - `JWT_SECRET`
+   - `AUDIT_SIGNING_SECRET`
+   - `PAYMENT_CONFIG_ENCRYPTION_KEY`
+   - `CORS_ALLOWED_ORIGINS`
 
 ## Run
 - Development:
@@ -53,6 +57,14 @@ Open: `http://localhost:3000`
   ```bash
   npm test
   ```
+
+## Docker (production-style)
+```bash
+docker compose up --build -d
+curl http://127.0.0.1:3000/health
+```
+
+See `PRODUCTION_READINESS.md` for VPS + Nginx Proxy Manager deployment steps.
 
 ## API overview
 - `POST /api/auth/signup`

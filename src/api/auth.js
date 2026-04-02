@@ -9,8 +9,21 @@ const { authRequired } = require('../middleware/auth');
 const { getRolePermissions } = require('../services/admin');
 
 const router = express.Router();
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 250, standardHeaders: true, legacyHeaders: false });
+const defaultLimiterMessage = { error: 'Too many requests. Please try again later.' };
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: defaultLimiterMessage,
+});
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: defaultLimiterMessage,
+});
 
 const loginSignals = new Map();
 const captchaChallenges = new Map();
