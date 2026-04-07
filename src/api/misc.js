@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
+const os = require('os');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const { createClient } = require('redis');
@@ -522,7 +523,9 @@ function processWebhookValidation({ payload, changedBy }) {
 }
 
 function userSummaryById(userId) {
-  const user = db.prepare('SELECT id, email, name, exam, role, is_active, created_at, last_login_at FROM users WHERE id = ?').get(userId);
+  const user = db.prepare(
+    'SELECT u.id, u.email, u.name, u.exam, u.role, u.package_name, u.platform_language, u.test_language, u.is_active, u.created_at, u.last_login_at, p.mood, p.readiness_score FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?'
+  ).get(userId);
   if (!user) return null;
   const tasks = db.prepare(
     `SELECT status, COUNT(*) AS count FROM tasks WHERE user_id = ? GROUP BY status`
@@ -531,7 +534,15 @@ function userSummaryById(userId) {
   const mockTests = db.prepare('SELECT id, name, score, total, created_at FROM mock_tests WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').all(userId);
   const reports = db.prepare('SELECT id, category, status, title, created_at, updated_at FROM reports WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').all(userId);
   const notifications = db.prepare('SELECT id, title, body, read_flag, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').all(userId);
-  return { user, tasks, moods, mockTests, reports, notifications };
+  const profileInput = {
+    exam: user.exam,
+    package_name: user.package_name || 'free',
+    platform_language: user.platform_language || 'Hinglish',
+    test_language: user.test_language || 'English',
+    mood: user.mood || 'Normal / Okay',
+    readiness_score: Number.isFinite(Number(user.readiness_score)) ? Number(user.readiness_score) : 50,
+  };
+  return { user, profileInput, tasks, moods, mockTests, reports, notifications };
 }
 
 publicWebhookRouter.post('/payments/webhooks/validate', (req, res) => {
@@ -703,6 +714,10 @@ router.get('/admin/dashboard', requirePermission('dashboard:view'), (_req, res) 
   const authAnomalies = db.prepare(
     "SELECT COUNT(*) AS c FROM audit_log WHERE action = 'auth_anomaly' AND created_at >= datetime('now', '-1 day')"
   ).get().c;
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const memoryUsedMb = Math.max(0, Math.round((totalMem - freeMem) / (1024 * 1024)));
+  const memoryTotalMb = Math.max(0, Math.round(totalMem / (1024 * 1024)));
   res.json({
     kpis: {
       totalUsers,
@@ -727,6 +742,15 @@ router.get('/admin/dashboard', requirePermission('dashboard:view'), (_req, res) 
       apiSpikes: apiSpike > 500 ? apiSpike : 0,
       authAnomalies,
     },
+    serverUsage: {
+      cpuCores: os.cpus().length,
+      loadAverage: os.loadavg(),
+      uptimeSeconds: Math.floor(process.uptime()),
+      memoryUsedMb,
+      memoryTotalMb,
+      processRssMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+      processHeapUsedMb: Math.round(process.memoryUsage().heapUsed / (1024 * 1024)),
+    },
   });
 });
 
@@ -735,7 +759,9 @@ router.get('/admin/users', requirePermission('users:view'), (req, res) => {
   const exam = String(req.query.exam || '').trim();
   const status = String(req.query.status || '').trim();
   const role = String(req.query.role || '').trim();
-  const base = db.prepare('SELECT id, email, name, exam, role, is_active, mfa_enabled, last_login_at, created_at FROM users ORDER BY created_at DESC').all();
+  const base = db.prepare(
+    'SELECT id, email, name, exam, role, package_name, platform_language, test_language, is_active, mfa_enabled, last_login_at, created_at FROM users ORDER BY created_at DESC'
+  ).all();
   const filtered = base.filter((u) => {
     if (q && !`${u.email} ${u.name}`.toLowerCase().includes(q)) return false;
     if (exam && u.exam !== exam) return false;

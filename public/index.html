@@ -38,6 +38,16 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);font
 select.ob-in option{background:#0f2438;}
 .ob-btn{width:100%;padding:12px;background:var(--accent);color:#1a1a1a;border:none;border-radius:11px;font-size:14px;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;transition:all .2s;margin-top:4px;}
 .ob-btn:hover{background:var(--accent2);transform:translateY(-1px);}
+.auth-gate{min-height:100vh;background:linear-gradient(145deg,#071525 0%,#0f2438 50%,#162b42 100%);display:flex;align-items:center;justify-content:center;padding:20px;}
+.auth-box{background:rgba(255,255,255,.06);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:24px;max-width:430px;width:100%;}
+.auth-box h2{font-size:22px;color:#fff;margin-bottom:6px;}
+.auth-box p{font-size:12px;color:rgba(255,255,255,.55);margin-bottom:14px;}
+.auth-lbl{font-size:11px;color:rgba(255,255,255,.55);margin-bottom:5px;display:block;font-weight:700;}
+.auth-input{width:100%;padding:10px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;color:#fff;font-size:13px;font-family:'Nunito',sans-serif;margin-bottom:10px;outline:none;}
+.auth-input::placeholder{color:rgba(255,255,255,.35);}
+.auth-input:focus{border-color:var(--accent);}
+.auth-note{font-size:11px;color:rgba(255,255,255,.45);margin-top:8px;}
+.auth-err{font-size:11px;color:#fecaca;background:rgba(127,29,29,.28);border:1px solid rgba(248,113,113,.45);padding:8px 10px;border-radius:9px;margin-bottom:10px;}
 .eg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
 .eo{padding:12px 8px;border:1.5px solid rgba(255,255,255,.12);border-radius:10px;cursor:pointer;text-align:center;transition:all .2s;color:#fff;}
 .eo:hover,.eo.sel{border-color:var(--accent);background:rgba(245,158,11,.1);}
@@ -328,6 +338,8 @@ tr:hover td{background:#fafbfc;}
 </head>
 <body>
 
+<div id="auth-gate" class="auth-gate hidden"></div>
+
 <!-- ═══════ ONBOARDING ═══════ -->
 <div id="ob">
 <div class="ob-logo"><h1>EXAM<span>BHAI</span></h1><p>India's Emotionally-Intelligent Exam Preparation Platform</p></div>
@@ -569,7 +581,7 @@ tr:hover td{background:#fafbfc;}
    DEMO DATA
 ═══════════════════════════════════ */
 const D={
-  student:{name:'Rahul Kumar',exam:'SSC CGL 2026',days:204,score:62,streak:8,attempt:2,mood:'Normal / Okay',mood_today_done:false},
+  student:{name:'Rahul Kumar',exam:'SSC CGL 2026',days:204,score:62,streak:8,attempt:2,mood:'Normal / Okay',mood_today_done:false,package_name:'free',platform_language:'Hinglish',test_language:'English'},
   subjects:{Quant:{acc:62,spd:24,trend:+8},Reasoning:{acc:71,spd:16,trend:+4},English:{acc:44,spd:18,trend:-2},GK:{acc:55,spd:12,trend:+5}},
   syllabus:{Quant:{done:9,total:14},Reasoning:{done:8,total:10},English:{done:4,total:10},GK:{done:7,total:10}},
   moodHistory:[
@@ -643,6 +655,7 @@ let authToken=localStorage.getItem('study_token')||'';
 let currentUser=null;
 let serverAnalytics=null;
 let securityPromptResolver=null;
+const pathMode=((String(location.pathname||'').replace(/\/+$/,'')||'/').toLowerCase());
 const MAX_CAPTCHA_PROMPT_ATTEMPTS=8;
 const FOCUS_STATE_KEY='exambhai_active_task_v1';
 const API_BASE='/api';
@@ -742,10 +755,68 @@ async function loginWithSecurity(payload){
   }
   throw new Error('Security verification failed');
 }
+function syncUserProfilePrefs(user){
+  if(!user)return;
+  D.student.package_name=user.package_name||D.student.package_name||'free';
+  D.student.platform_language=user.platform_language||D.student.platform_language||'Hinglish';
+  D.student.test_language=user.test_language||D.student.test_language||'English';
+}
+function hideAuthGate(){
+  document.getElementById('auth-gate')?.classList.add('hidden');
+}
+function showAuthError(msg){
+  const el=document.getElementById('auth-error');
+  if(el)el.textContent=msg||'Login failed';
+  el?.classList.remove('hidden');
+}
+async function submitPathLogin(mode){
+  const email=document.getElementById('auth-email')?.value?.trim()||'';
+  const password=document.getElementById('auth-password')?.value?.trim()||'';
+  if(!email||!password){showAuthError('Email and password are required.');return;}
+  try{
+    const login=await loginWithSecurity({email,password});
+    authToken=login.token||'';if(authToken)localStorage.setItem('study_token',authToken);
+    const me=await apiFetch('/auth/me');
+    currentUser=me;
+    syncUserProfilePrefs(me);
+    if(mode==='admin'&&String(me.role||'student')==='student')throw new Error('This account does not have admin access.');
+    hideAuthGate();
+    document.getElementById('ob').classList.add('hidden');
+    document.getElementById('app').classList.add('on');
+    renderAdminNav();
+    loadTasks();
+    await hydrateFromServer();
+    if(mode==='admin')go('superadmin');
+    else go('home');
+  }catch(e){
+    showAuthError(e.message||'Login failed');
+  }
+}
+function renderPathLogin(mode){
+  const gate=document.getElementById('auth-gate');
+  if(!gate)return;
+  gate.classList.remove('hidden');
+  document.getElementById('ob').classList.add('hidden');
+  document.getElementById('app').classList.remove('on');
+  gate.innerHTML=`
+    <div class="auth-box">
+      <div class="sb-logo" style="font-size:30px;margin-bottom:8px">EXAM<span>BHAI</span></div>
+      <h2>${mode==='admin'?'Superadmin Login':'User Login'}</h2>
+      <p>${mode==='admin'?'Sign in at /admin to access the Superadmin control center.':'Sign in at /login to continue your study dashboard.'}</p>
+      <div id="auth-error" class="auth-err hidden"></div>
+      <label class="auth-lbl">Email</label>
+      <input id="auth-email" class="auth-input" type="email" placeholder="you@example.com">
+      <label class="auth-lbl">Password</label>
+      <input id="auth-password" class="auth-input" type="password" placeholder="Enter password" onkeypress="if(event.key==='Enter')submitPathLogin('${mode}')">
+      <button class="ob-btn" onclick="submitPathLogin('${mode}')">${mode==='admin'?'Login to Superadmin':'Login'}</button>
+      <div class="auth-note">${mode==='admin'?'Only admin/superadmin roles can continue after authentication.':'Need admin? visit /admin.'}</div>
+    </div>`;
+}
 async function ensureAuth(){
   if(authToken){
     try{
       currentUser=await apiFetch('/auth/me');
+      syncUserProfilePrefs(currentUser);
       return currentUser;
     }catch(e){}
   }
@@ -753,10 +824,10 @@ async function ensureAuth(){
   const payload={email:demoEmail,password:'StrongPass123',name:'Rahul Kumar',exam:'SSC CGL 2026'};
   try{
     const login=await loginWithSecurity({email:payload.email,password:payload.password});
-    authToken=login.token;localStorage.setItem('study_token',authToken);currentUser=login.user;return currentUser;
+    authToken=login.token;localStorage.setItem('study_token',authToken);currentUser=login.user;syncUserProfilePrefs(currentUser);return currentUser;
   }catch(e){
     const signup=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify(payload)});
-    authToken=signup.token;localStorage.setItem('study_token',authToken);localStorage.setItem('study_demo_email',demoEmail);currentUser=signup.user;return currentUser;
+    authToken=signup.token;localStorage.setItem('study_token',authToken);localStorage.setItem('study_demo_email',demoEmail);currentUser=signup.user;syncUserProfilePrefs(currentUser);return currentUser;
   }
 }
 async function bootstrapTasksFromApi(){
@@ -903,6 +974,7 @@ function selA(g){document.querySelectorAll(`input[data-g="${g}"]`).forEach(cb=>{
 document.querySelectorAll('.ti input').forEach(cb=>{cb.addEventListener('change',function(){this.closest('.ti').classList.toggle('ck',this.checked);});});
 async function launch(){
   await ensureAuth();
+  hideAuthGate();
   renderAdminNav();
   loadTasks();
   await hydrateFromServer();
@@ -957,6 +1029,7 @@ async function loadAdminJobs(){return apiTry('/admin/jobs',{},[]);}
 async function loadAdminPrivacyRequests(){return apiTry('/admin/privacy/requests',{},[]);}
 async function loadAdminSupportTickets(){return apiTry('/admin/support/tickets',{},[]);}
 async function loadAdminMacros(){return apiTry('/admin/support/macros',{},[]);}
+async function loadAdminNotificationTemplates(){return apiTry('/admin/notifications/templates',{},[]);}
 async function loadAdminDualApprovals(){return apiTry('/admin/security/dual-approval',{},[]);}
 async function loadAdminSecretRotations(){return apiTry('/admin/security/secrets/rotations',{},[]);}
 async function loadAdminPolicyMatrix(){return apiTry('/admin/policy-matrix',{},[]);}
@@ -1022,6 +1095,7 @@ async function saveReportAction(id){
 async function createAdminContent(){
   const type=document.getElementById('ac-type')?.value||'course';
   const courseKey=document.getElementById('ac-course-key')?.value?.trim()||'';
+  const contentLanguage=document.getElementById('ac-content-lang')?.value||'english';
   const title=document.getElementById('ac-title')?.value?.trim()||'';
   const description=document.getElementById('ac-desc')?.value?.trim()||'';
   const status=document.getElementById('ac-status')?.value||'active';
@@ -1042,10 +1116,12 @@ async function createAdminContent(){
         pages=JSON.parse(pagesText);
         metadata=JSON.parse(dataText);
       }catch(e){showModal('errorMsg','OCR pages or metadata JSON is invalid');return;}
+      metadata.content_language=contentLanguage;
       await apiFetch('/admin/content/upload-ocr',{method:'POST',headers:adminHeaders(),body:JSON.stringify({course_key:courseKey,content_type:type,title,description:description||null,status,source_file_name:sourceFile,source_mime_type:sourceMime,raw_text:rawText,pages,metadata})});
     }else{
       let dataObj={};
       try{dataObj=JSON.parse(dataText);}catch(e){showModal('errorMsg','Metadata JSON is invalid');return;}
+      dataObj.content_language=contentLanguage;
       await apiFetch('/admin/content',{method:'POST',headers:adminHeaders(),body:JSON.stringify({course_key:courseKey,content_type:type,title,description:description||null,status,data:dataObj})});
     }
     showModal('adminContentSaved');go('superadmin');
@@ -1083,6 +1159,15 @@ async function saveAiRoute(){
     await apiFetch('/admin/ai/routes',{method:'POST',headers:adminHeaders(),body:JSON.stringify({feature,model,fallback_model:fallback_model||null})});
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save AI route');}
+}
+function assignAiRoleUi(feature,model,fallback=''){
+  const f=document.getElementById('sa-route-feature');
+  const m=document.getElementById('sa-route-model');
+  const fb=document.getElementById('sa-route-fallback');
+  if(f)f.value=feature;
+  if(m)m.value=model;
+  if(fb)fb.value=fallback;
+  saveAiRoute();
 }
 async function saveMistralOcrUi(){
   const enabled=document.getElementById('sa-ocr-enabled')?.checked??true;
@@ -1151,6 +1236,52 @@ async function saveConfigUi(){
     await apiFetch('/admin/config',{method:'POST',headers:adminHeaders(),body:JSON.stringify({config_key,config_value:tryParseJson(valText,valText),validation_rule:'json'})});
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save config');}
+}
+async function saveSystemSettingUi(configKey,inputId){
+  const value=document.getElementById(inputId)?.value?.trim()||'';
+  if(!value){showModal('errorMsg','Value is required');return;}
+  try{
+    await apiFetch('/admin/config',{method:'POST',headers:adminHeaders(),body:JSON.stringify({config_key:configKey,config_value:{value},validation_rule:'json'})});
+    showModal('adminActionSaved');
+    go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to save setting');}
+}
+async function saveNotificationTemplateUi(){
+  const name=document.getElementById('sa-tpl-name')?.value?.trim()||'';
+  const title_template=document.getElementById('sa-tpl-title')?.value?.trim()||'';
+  const body_template=document.getElementById('sa-tpl-body')?.value?.trim()||'';
+  if(!name||!title_template||!body_template){showModal('errorMsg','Template name, title, and body are required');return;}
+  try{
+    await apiFetch('/admin/notifications/templates',{method:'POST',headers:adminHeaders(),body:JSON.stringify({name,title_template,body_template})});
+    showModal('adminActionSaved');
+    go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to save template');}
+}
+async function showUserDetailUi(id){
+  try{
+    const data=await apiFetch(`/admin/users/${id}`);
+    const u=data.user||{};
+    const profile=data.profileInput||{};
+    const tasks=(data.tasks||[]).map(t=>`${t.status}: ${t.count}`).join(' · ')||'No task logs';
+    const moods=(data.moods||[]).slice(0,6).map(m=>`${m.mood} (${new Date(m.created_at).toLocaleDateString()})`).join('<br>')||'No mood entries';
+    const tests=(data.mockTests||[]).slice(0,8).map(t=>`${escHtml(t.name)} — ${t.score}/${t.total}`).join('<br>')||'No tests';
+    showModal('errorMsg',`
+      <strong>${escHtml(u.name||'-')}</strong> (${escHtml(u.email||'-')})<br>
+      Exam: ${escHtml(u.exam||'-')} · Role: ${escHtml(u.role||'student')} · Package: ${escHtml(u.package_name||'free')}<br>
+      Platform language: ${escHtml(u.platform_language||'Hinglish')} · Test language: ${escHtml(u.test_language||'English')}<br>
+      Readiness score: ${escHtml(profile.readiness_score??'-')} · Mood: ${escHtml(profile.mood||'-')}<br><br>
+      <strong>Collected Input Snapshot</strong><br>
+      Tasks: ${escHtml(tasks)}<br><br>
+      <strong>Recent Moods</strong><br>${moods}<br><br>
+      <strong>Recent Mock Tests</strong><br>${tests}
+    `);
+  }catch(e){showModal('errorMsg',e.message||'Failed to load user detail');}
+}
+function setPlatformLanguage(value){
+  D.student.platform_language=value||'Hinglish';
+}
+function setTestLanguage(value){
+  D.student.test_language=value||'English';
 }
 async function savePaymentGatewaySetupUi(){
   const saveBtn=document.getElementById('sa-pay-save-btn');
@@ -1349,6 +1480,7 @@ async function renderSuperAdminSections(){
   const opsEl=document.getElementById('sa-ops-body');
   const compEl=document.getElementById('sa-compliance-body');
   const secEl=document.getElementById('sa-security-body');
+  const setEl=document.getElementById('sa-settings-body');
   const perms=Array.isArray(currentUser?.permissions)?currentUser.permissions:[];
   const canManageOps=perms.includes('*')||perms.includes('ops:manage');
   const canPaymentSettings=perms.includes('*')||perms.includes('payments:settings');
@@ -1359,7 +1491,7 @@ async function renderSuperAdminSections(){
     const dash=await loadAdminDashboard();
     if(!dash)oEl.innerHTML='<div style="font-size:12px;color:var(--muted)">Dashboard unavailable or permission denied.</div>';
     else{
-      const k=dash.kpis||{},h=dash.systemHealth||{},a=dash.alerts||{};
+      const k=dash.kpis||{},h=dash.systemHealth||{},a=dash.alerts||{},su=dash.serverUsage||{};
       oEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px">
         ${[
           ['Total Users',k.totalUsers],['Active Today',k.activeToday],['New Signups',k.newSignups],['Retention %',k.retentionPct],
@@ -1369,6 +1501,11 @@ async function renderSuperAdminSections(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
         <div class="alt a-s">System: DB ${escHtml(h.db||'n/a')} · Queue ${escHtml(h.queueStatus||'n/a')} · Jobs ${escHtml(h.backgroundJobs||'n/a')}</div>
         <div class="alt a-w">Alerts: incidents ${escHtml(a.incidents??0)} · failed AI ${escHtml(a.failedAiCalls??0)} · auth anomalies ${escHtml(a.authAnomalies??0)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:8px">
+        <div class="alt a-i">Server CPU Cores: <strong>${escHtml(su.cpuCores??'-')}</strong> · Load: ${escHtml(Array.isArray(su.loadAverage)?su.loadAverage.map(v=>Number(v).toFixed(2)).join(' / '):'-')}</div>
+        <div class="alt a-i">Server Memory: <strong>${escHtml(su.memoryUsedMb??'-')} MB</strong> / ${escHtml(su.memoryTotalMb??'-')} MB</div>
+        <div class="alt a-i">Process RSS: <strong>${escHtml(su.processRssMb??'-')} MB</strong> · Heap: ${escHtml(su.processHeapUsedMb??'-')} MB · Uptime: ${escHtml(su.uptimeSeconds??0)}s</div>
       </div>`;
     }
   }
@@ -1404,10 +1541,13 @@ async function renderSuperAdminSections(){
   if(uEl){
     const users=await loadAdminUsers();
     if(!users.length)uEl.innerHTML='<div style="font-size:12px;color:var(--muted)">No users or permission denied.</div>';
-    else uEl.innerHTML=`<table>
-      <tr><th>ID</th><th>Name</th><th>Email</th><th>Exam</th><th>Role</th><th>Status</th><th>Last Login</th></tr>
-      ${users.slice(0,80).map(u=>`<tr><td>${u.id}</td><td>${escHtml(u.name)}</td><td>${escHtml(u.email)}</td><td>${escHtml(u.exam)}</td><td>${escHtml(u.role||'student')}</td><td>${Number(u.is_active)===1?'active':'disabled'}</td><td>${u.last_login_at?new Date(u.last_login_at).toLocaleString():'-'}</td></tr>`).join('')}
-    </table>`;
+    else{
+      const packageCounts=users.reduce((acc,u)=>{const k=(u.package_name||'free').toLowerCase();acc[k]=(acc[k]||0)+1;return acc;},{});
+      uEl.innerHTML=`<div class="alt a-i" style="margin-bottom:8px">Packages: ${Object.entries(packageCounts).map(([k,v])=>`${escHtml(k)} (${v})`).join(' · ')||'none'} · Click user row for billing/input details.</div><table>
+      <tr><th>ID</th><th>Name</th><th>Email</th><th>Exam</th><th>Package</th><th>Platform Lang</th><th>Test/Paper Lang</th><th>Role</th><th>Status</th><th>Last Login</th></tr>
+      ${users.slice(0,80).map(u=>`<tr onclick="showUserDetailUi(${u.id})" style="cursor:pointer"><td>${u.id}</td><td>${escHtml(u.name)}</td><td>${escHtml(u.email)}</td><td>${escHtml(u.exam)}</td><td>${escHtml(u.package_name||'free')}</td><td>${escHtml(u.platform_language||'Hinglish')}</td><td>${escHtml(u.test_language||'English')}</td><td>${escHtml(u.role||'student')}</td><td>${Number(u.is_active)===1?'active':'disabled'}</td><td>${u.last_login_at?new Date(u.last_login_at).toLocaleString():'-'}</td></tr>`).join('')}
+    </table><div style="margin-top:8px;font-size:11px;color:var(--muted)">Click any user row to view collected input details (mood, tasks, tests, reports, notifications).</div>`;
+    }
   }
   if(aiEl){
     const [g,p,r,f,ocr,providerCfg]=await Promise.all([loadAdminAiGuardrails(),loadAdminAiPrompts(),loadAdminAiRoutes(),loadAdminAiFeedback(),loadAdminMistralOcr(),loadAdminAiProviders()]);
@@ -1459,7 +1599,20 @@ async function renderSuperAdminSections(){
       <div style="font-size:11px;color:var(--muted);margin-top:6px">Saved key: ${escHtml(ocrSafe.api_key||'not-set')}</div>
       <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="saveMistralOcrUi()">Save Mistral OCR Setup</button>
       <div class="alt a-s" style="margin-top:12px">General AI provider setup (for testing/provider switch)</div>
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px">${providersHtml}</div>`;
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px">${providersHtml}</div>
+      <div class="alt a-i" style="margin-top:12px">AI task assignment by feature</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('customer.support','sarvam/customer-support')">Customer Support → Sarvam</button>
+        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('study.planning','deepseek/deepseek-chat')">Study Planning → DeepSeek</button>
+        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('mocktests.ocr','mistral-ocr-latest')">Mock Test OCR → Mistral</button>
+        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('invoices.scan','mistral-ocr-latest')">Invoice Scan → Mistral</button>
+        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('content.suggest-course','openrouter/auto')">Course Suggestion → OpenRouter</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <input id="sa-ai-course-target" class="fc" placeholder="Course target (e.g. SSC CGL 2026)">
+        <select id="sa-ai-course-lang" class="fc"><option value="english">English</option><option value="hindi">Hindi</option></select>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Use OCR uploads with course + language keys so AI can auto-sort files and keep question/diagram/answer-key mapping in metadata.</div>`;
   }
   if(apiEl){
     const keys=await loadAdminApiKeys();
@@ -1577,6 +1730,39 @@ async function renderSuperAdminSections(){
         <input id="sa-macro-body" class="fc" placeholder="Support macro body">
       </div>
       <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="createSupportMacroUi()">Save Support Macro</button>`;
+  }
+  if(setEl){
+    const [cfg,templates]=await Promise.all([loadAdminConfig(),loadAdminNotificationTemplates()]);
+    const cfgMap={};
+    (cfg||[]).forEach(c=>{cfgMap[c.config_key]=c?.parsed?.value??(typeof c?.parsed==='string'?c.parsed:'');});
+    setEl.innerHTML=`
+      <div class="alt a-i" style="margin-bottom:8px">Settings center for email, SMS, payment gateway, and editable message templates.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="sa-set-email-provider" class="fc" placeholder="Email provider (SMTP/SES)" value="${escHtml(cfgMap['settings.email.provider']||'')}">
+        <input id="sa-set-email-from" class="fc" placeholder="From email" value="${escHtml(cfgMap['settings.email.from']||'')}">
+        <input id="sa-set-sms-provider" class="fc" placeholder="SMS provider (MSG91/Twilio)" value="${escHtml(cfgMap['settings.sms.provider']||'')}">
+        <input id="sa-set-sms-sender" class="fc" placeholder="SMS sender id" value="${escHtml(cfgMap['settings.sms.sender_id']||'')}">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-gh" onclick="saveSystemSettingUi('settings.email.provider','sa-set-email-provider')">Save Email Provider</button>
+        <button class="btn btn-sm btn-gh" onclick="saveSystemSettingUi('settings.email.from','sa-set-email-from')">Save From Email</button>
+        <button class="btn btn-sm btn-gh" onclick="saveSystemSettingUi('settings.sms.provider','sa-set-sms-provider')">Save SMS Provider</button>
+        <button class="btn btn-sm btn-gh" onclick="saveSystemSettingUi('settings.sms.sender_id','sa-set-sms-sender')">Save SMS Sender ID</button>
+      </div>
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-size:12px;font-weight:800;margin-bottom:6px">💳 Razorpay Setup Shortcut</div>
+        <div class="alt a-s">Use Ops → Payments tab for full gateway setup, testing, rotation, and rollback. This settings section keeps messaging/setup metadata in one place.</div>
+      </div>
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-size:12px;font-weight:800;margin-bottom:6px">✉️ Editable Email/SMS Templates</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input id="sa-tpl-name" class="fc" placeholder="template name (e.g. payment_success)">
+          <input id="sa-tpl-title" class="fc" placeholder="title/subject template">
+          <textarea id="sa-tpl-body" class="fc" style="grid-column:1/3;min-height:80px" placeholder="message body template"></textarea>
+        </div>
+        <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="saveNotificationTemplateUi()">Save Template</button>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">Available templates: ${(templates||[]).slice(0,10).map(t=>escHtml(t.name)).join(', ')||'none yet'}</div>
+      </div>`;
   }
   if(secEl){
     const [dual,secrets,policy]=await Promise.all([loadAdminDualApprovals(),loadAdminSecretRotations(),loadAdminPolicyMatrix()]);
@@ -1811,6 +1997,7 @@ planner:()=>`
 
 /* MOCK TESTS */
 tests:()=>`
+<div class="alt a-i" style="margin-bottom:10px">Paper/Test Language: <strong>${escHtml(D.student.test_language||'English')}</strong> (controls which language test packs are shown).</div>
 <div class="tabs">
   <div class="tab on" onclick="swTab(this,'t1')">🤖 AI Recommended</div>
   <div class="tab" onclick="swTab(this,'t2')">📑 Chapter-wise</div>
@@ -1905,7 +2092,7 @@ tests:()=>`
 /* PYP */
 pyp:()=>`
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-  <div style="font-size:13px;font-weight:800">Previous Year Papers</div>
+  <div style="font-size:13px;font-weight:800">Previous Year Papers · Language: ${escHtml(D.student.test_language||'English')}</div>
   <button class="btn btn-br" onclick="showModal('dlAllPYP')">📥 Download All PDFs</button>
 </div>
 <div class="tabs">
@@ -2240,7 +2427,8 @@ profile:()=>`
       <div class="fg"><label>Exam Target</label><select class="fc"><option selected>SSC CGL 2026</option><option>SSC CHSL 2026</option><option>Railways NTPC 2026</option></select></div>
       <div class="fg"><label>Exam Date</label><input type="date" class="fc" value="2026-10-12"></div>
       <div class="fg"><label>Daily Study Hours</label><select class="fc"><option>2 hrs</option><option selected>3-4 hrs</option><option>5-6 hrs</option></select></div>
-      <div class="fg"><label>Language</label><select class="fc"><option selected>Hinglish (Default)</option><option>English Only</option><option>Hindi Only</option></select></div>
+      <div class="fg"><label>Platform Language (Whole App)</label><select class="fc" onchange="setPlatformLanguage(this.value)"><option value="English" ${D.student.platform_language==='English'?'selected':''}>English</option><option value="Hindi" ${D.student.platform_language==='Hindi'?'selected':''}>Hindi</option><option value="Hinglish" ${D.student.platform_language==='Hinglish'?'selected':''}>Hinglish</option></select></div>
+      <div class="fg"><label>Mock Test / PYP Language</label><select class="fc" onchange="setTestLanguage(this.value)"><option value="English" ${D.student.test_language==='English'?'selected':''}>English</option><option value="Hindi" ${D.student.test_language==='Hindi'?'selected':''}>Hindi</option></select></div>
       <div class="fg"><label>Mood Check-ins</label><select class="fc"><option selected>Twice daily (Morning + Evening)</option><option>Morning only</option><option>Off</option></select></div>
       <div class="fg"><label>Data Saver Mode</label><select class="fc"><option>Off</option><option selected>On (60% less data)</option></select></div>
     </div>
@@ -2315,6 +2503,7 @@ superadmin:()=>`
   <div class="tab" onclick="swTab(this,'sa-ai')">🤖 AI Control</div>
   <div class="tab" onclick="swTab(this,'sa-api')">🔌 API Management</div>
   <div class="tab" onclick="swTab(this,'sa-ops')">⚙️ Flags & Ops</div>
+  <div class="tab" onclick="swTab(this,'sa-settings')">🧩 Settings</div>
   <div class="tab" onclick="swTab(this,'sa-compliance')">🧾 Compliance & Support</div>
   <div class="tab" onclick="swTab(this,'sa-security')">🛡️ Security Controls</div>
 </div>
@@ -2343,6 +2532,7 @@ superadmin:()=>`
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="fg"><label>Course / Exam Key</label><input class="fc" id="ac-course-key" placeholder="e.g. SSC CGL 2026"></div>
         <div class="fg"><label>Type</label><select class="fc" id="ac-type"><option value="course">Course</option><option value="book">Book</option><option value="syllabus">Syllabus</option><option value="pyp">Previous Year Papers (PYP)</option><option value="mock_test">Mock Tests</option></select></div>
+        <div class="fg"><label>Content Language</label><select class="fc" id="ac-content-lang"><option value="english">English</option><option value="hindi">Hindi</option></select></div>
         <div class="fg"><label>Status</label><select class="fc" id="ac-status"><option value="active">Active</option><option value="draft">Draft</option><option value="archived">Archived</option></select></div>
         <div class="fg" style="grid-column:1/3"><label>Title</label><input class="fc" id="ac-title" placeholder="e.g. SSC CGL Quant Foundation"></div>
         <div class="fg" style="grid-column:1/3"><label>Description</label><input class="fc" id="ac-desc" placeholder="Short description"></div>
@@ -2377,6 +2567,12 @@ superadmin:()=>`
   <div class="card">
     <div class="ch"><h3>⚙️ Feature Flags, Config & Ops</h3></div>
     <div class="cb" id="sa-ops-body"><div style="font-size:12px;color:var(--muted)">Loading ops controls...</div></div>
+  </div>
+</div>
+<div id="sa-settings" class="tc">
+  <div class="card">
+    <div class="ch"><h3>🧩 Platform Settings</h3></div>
+    <div class="cb" id="sa-settings-body"><div style="font-size:12px;color:var(--muted)">Loading settings...</div></div>
   </div>
 </div>
 <div id="sa-compliance" class="tc">
@@ -2880,10 +3076,16 @@ function renderAdminNav(){
     nav.appendChild(lbl);nav.appendChild(item);
   }
 }
+if(pathMode==='/login'){
+  renderPathLogin('user');
+}else if(pathMode==='/admin'){
+  renderPathLogin('admin');
+}
 setTimeout(renderAdminNav,0);
 window.submitIssueReport=submitIssueReport;
 window.saveReportAction=saveReportAction;
 window.createAdminContent=createAdminContent;
+window.submitPathLogin=submitPathLogin;
 </script>
 </body>
 </html>
