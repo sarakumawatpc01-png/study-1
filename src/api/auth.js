@@ -174,7 +174,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 
   const user = db
-    .prepare('SELECT id, email, name, exam, password_hash, token_version, is_active FROM users WHERE email = ?')
+    .prepare('SELECT id, email, name, exam, role, package_name, platform_language, test_language, password_hash, token_version, is_active FROM users WHERE email = ?')
     .get(email);
   if (!user) {
     const updated = registerFailure(req, email);
@@ -221,7 +221,16 @@ router.post('/login', loginLimiter, async (req, res) => {
   clearFailures(req, email);
   res.json({
     token,
-    user: { id: user.id, email: user.email, name: user.name, exam: user.exam },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      exam: user.exam,
+      role: user.role,
+      package_name: user.package_name || 'free',
+      platform_language: user.platform_language || 'Hinglish',
+      test_language: user.test_language || 'English',
+    },
   });
 });
 
@@ -238,7 +247,9 @@ router.post('/verify-2fa', loginLimiter, async (req, res) => {
   }
   if (String(code).trim() !== challenge.code) return res.status(401).json({ error: 'Invalid verification code' });
 
-  const user = db.prepare('SELECT id, email, name, exam, token_version, is_active FROM users WHERE id = ?').get(challenge.userId);
+  const user = db.prepare(
+    'SELECT id, email, name, exam, role, package_name, platform_language, test_language, token_version, is_active FROM users WHERE id = ?'
+  ).get(challenge.userId);
   twoFactorChallenges.delete(token);
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (Number(user.is_active) !== 1) return res.status(403).json({ error: 'Account disabled by admin' });
@@ -246,7 +257,19 @@ router.post('/verify-2fa', loginLimiter, async (req, res) => {
   const signed = issueToken(user);
   db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), user.id);
   if (challenge.key) loginSignals.delete(challenge.key);
-  res.json({ token: signed, user: { id: user.id, email: user.email, name: user.name, exam: user.exam } });
+  res.json({
+    token: signed,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      exam: user.exam,
+      role: user.role,
+      package_name: user.package_name || 'free',
+      platform_language: user.platform_language || 'Hinglish',
+      test_language: user.test_language || 'English',
+    },
+  });
 });
 
 setInterval(() => {
@@ -265,7 +288,7 @@ setInterval(() => {
 router.get('/me', authRequired, (req, res) => {
   const user = db
     .prepare(
-      'SELECT u.id, u.email, u.name, u.exam, u.role, p.mood, p.readiness_score AS readinessScore FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.id = ?'
+      'SELECT u.id, u.email, u.name, u.exam, u.role, u.package_name, u.platform_language, u.test_language, p.mood, p.readiness_score AS readinessScore FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.id = ?'
     )
     .get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
