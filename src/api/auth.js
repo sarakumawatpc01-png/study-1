@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const https = require('https');
 const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
 const db = require('../db');
@@ -34,6 +35,9 @@ const CAPTCHA_AFTER_FAILURES = 3;
 const TWO_FACTOR_AFTER_FAILURES = 5;
 const CAPTCHA_TTL_MS = 5 * 60 * 1000;
 const TWO_FACTOR_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_PLATFORM_LANGUAGE = 'English';
+const DEFAULT_TEST_LANGUAGE = 'English';
+const SIGNUP_WEBHOOK_TIMEOUT_MS = 3000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -109,6 +113,50 @@ function issueToken(user) {
   });
 }
 
+function notifyAdminsOnSignup(user) {
+  try {
+    const admins = db
+      .prepare("SELECT id FROM users WHERE role IN ('admin','superadmin') AND is_active = 1")
+      .all();
+    if (!admins.length) return;
+    const now = new Date().toISOString();
+    const title = '🆕 New user signup';
+    const body = `${user.name} (${user.email}) signed up for ${user.exam}.`;
+    const stmt = db.prepare('INSERT INTO notifications (user_id, title, body, created_at) VALUES (?, ?, ?, ?)');
+    for (const admin of admins) {
+      stmt.run(admin.id, title, body, now);
+    }
+  } catch (_err) {}
+}
+
+function sendSignupAlertWebhook(user) {
+  const webhookUrl = String(process.env.SIGNUP_ALERT_WEBHOOK_URL || '').trim();
+  if (!webhookUrl) return;
+  try {
+    const parsed = new URL(webhookUrl);
+    if (parsed.protocol !== 'https:') return;
+    const payload = JSON.stringify({
+      event: 'user.signup',
+      user: { id: user.id, email: user.email, name: user.name, exam: user.exam },
+      occurred_at: new Date().toISOString(),
+    });
+    const req = https.request(webhookUrl, {
+      method: 'POST',
+      timeout: SIGNUP_WEBHOOK_TIMEOUT_MS,
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) },
+    });
+    req.on('error', (err) => {
+      if (process.env.NODE_ENV !== 'production') console.warn('signup webhook error:', err?.message || 'unknown');
+    });
+    req.on('timeout', () => {
+      if (process.env.NODE_ENV !== 'production') console.warn('signup webhook timeout');
+      req.destroy();
+    });
+    req.write(payload);
+    req.end();
+  } catch (_err) {}
+}
+
 const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
@@ -142,15 +190,17 @@ router.post('/signup', authLimiter, async (req, res) => {
   const tx = db.transaction(() => {
     const result = db
       .prepare(
-        'INSERT INTO users (email, password_hash, name, exam, role, is_active, token_version, mfa_enabled, created_at) VALUES (?, ?, ?, ?, ?, 1, 0, 0, ?)'
+        'INSERT INTO users (email, password_hash, name, exam, platform_language, test_language, role, is_active, token_version, mfa_enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?)'
       )
-      .run(email, passwordHash, name, exam, 'student', createdAt);
+      .run(email, passwordHash, name, exam, DEFAULT_PLATFORM_LANGUAGE, DEFAULT_TEST_LANGUAGE, 'student', createdAt);
     db.prepare('INSERT INTO profiles (user_id, mood, readiness_score) VALUES (?, ?, ?)')
       .run(result.lastInsertRowid, 'Normal / Okay', 50);
     return result.lastInsertRowid;
   });
 
   const userId = tx();
+  notifyAdminsOnSignup({ id: userId, email, name, exam });
+  sendSignupAlertWebhook({ id: userId, email, name, exam });
   const token = issueToken({ id: userId, email, token_version: 0 });
   res.status(201).json({ token, user: { id: userId, email, name, exam } });
 });
@@ -228,8 +278,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       exam: user.exam,
       role: user.role,
       package_name: user.package_name || 'free',
-      platform_language: user.platform_language || 'Hinglish',
-      test_language: user.test_language || 'English',
+      platform_language: user.platform_language || DEFAULT_PLATFORM_LANGUAGE,
+      test_language: user.test_language || DEFAULT_TEST_LANGUAGE,
     },
   });
 });
@@ -266,8 +316,8 @@ router.post('/verify-2fa', loginLimiter, async (req, res) => {
       exam: user.exam,
       role: user.role,
       package_name: user.package_name || 'free',
-      platform_language: user.platform_language || 'Hinglish',
-      test_language: user.test_language || 'English',
+      platform_language: user.platform_language || DEFAULT_PLATFORM_LANGUAGE,
+      test_language: user.test_language || DEFAULT_TEST_LANGUAGE,
     },
   });
 });

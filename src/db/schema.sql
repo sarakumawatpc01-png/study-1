@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   exam TEXT NOT NULL,
   package_name TEXT NOT NULL DEFAULT 'free',
-  platform_language TEXT NOT NULL DEFAULT 'Hinglish',
+  platform_language TEXT NOT NULL DEFAULT 'English',
   test_language TEXT NOT NULL DEFAULT 'English',
   role TEXT NOT NULL DEFAULT 'student',
   is_active INTEGER NOT NULL DEFAULT 1,
