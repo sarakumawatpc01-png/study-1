@@ -81,6 +81,7 @@ function isSafeBackupPath(p) {
 
 const PAYMENT_CONFIG_KEY = 'payments.gateway';
 const PAYMENT_CURRENCIES = ['INR'];
+const REPORTS_FLOW_CONFIG_KEY = 'reports.ai.flow';
 const CONNECTION_TEST_LIMIT_WINDOW_MS = 60 * 1000;
 const CONNECTION_TEST_LIMIT_MAX = 5;
 const CIRCUIT_BREAKER_FAIL_THRESHOLD = 3;
@@ -971,6 +972,86 @@ router.post('/admin/reports/:id/action', requirePermission('reports:triage'), (r
   );
   createAuditLog({ actor: req.user, action: 'report_action', targetType: 'report', targetId: req.params.id, details: parsed.data });
   res.json({ ok: true });
+});
+
+router.get('/admin/reports/flow-config', requirePermission('reports:view'), (_req, res) => {
+  const row = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(REPORTS_FLOW_CONFIG_KEY);
+  const fallback = {
+    enabled: true,
+    auto_triage: true,
+    auto_reply: true,
+    default_assignee_model: 'openrouter/openai/gpt-4o-mini',
+    default_reply_template: 'Thanks for reporting this issue. Our team + AI assistant are reviewing it now.',
+    auto_status: 'in_review',
+  };
+  if (!row) return res.json(fallback);
+  return res.json({ ...fallback, ...(parseJsonSafe(row.config_value, {}) || {}) });
+});
+
+router.post('/admin/reports/flow-config', requirePermission('reports:triage'), (req, res) => {
+  const schema = z.object({
+    enabled: z.boolean(),
+    auto_triage: z.boolean(),
+    auto_reply: z.boolean(),
+    default_assignee_model: z.string().min(2).max(120),
+    default_reply_template: z.string().min(4).max(1000),
+    auto_status: z.enum(['open', 'in_review', 'resolved', 'closed', 'escalated']),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid reports flow config payload' });
+  db.prepare(
+    `INSERT INTO config_settings (config_key, config_value, validation_rule, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, validation_rule = excluded.validation_rule, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+  ).run(REPORTS_FLOW_CONFIG_KEY, JSON.stringify(parsed.data), 'json', req.user.id, nowIso());
+  createAuditLog({ actor: req.user, action: 'reports_flow_config_upsert', targetType: 'config', targetId: REPORTS_FLOW_CONFIG_KEY, details: parsed.data });
+  res.json({ ok: true });
+});
+
+router.post('/admin/reports/:id/reply', requirePermission('reports:triage'), (req, res) => {
+  const schema = z.object({ message: z.string().min(2).max(1000), mark_status: z.enum(['open', 'in_review', 'resolved', 'closed']).optional().nullable() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid report reply payload' });
+  const report = db.prepare('SELECT id, user_id, admin_note, status FROM reports WHERE id = ?').get(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  db.prepare('INSERT INTO notifications (user_id, title, body, created_at) VALUES (?, ?, ?, ?)')
+    .run(report.user_id, `Update on your report #${report.id}`, parsed.data.message, nowIso());
+  const nextNote = [String(report.admin_note || '').trim(), `Reply: ${parsed.data.message}`].filter(Boolean).join('\n');
+  db.prepare('UPDATE reports SET admin_note = ?, status = COALESCE(?, status), updated_at = ? WHERE id = ?')
+    .run(nextNote, parsed.data.mark_status || null, nowIso(), req.params.id);
+  createAuditLog({ actor: req.user, action: 'report_reply', targetType: 'report', targetId: req.params.id, details: { mark_status: parsed.data.mark_status || null } });
+  res.status(201).json({ ok: true });
+});
+
+router.post('/admin/reports/:id/auto-flow', requirePermission('reports:triage'), (req, res) => {
+  const report = db.prepare('SELECT id, user_id, title, description FROM reports WHERE id = ?').get(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  const cfgRow = db.prepare('SELECT config_value FROM config_settings WHERE config_key = ?').get(REPORTS_FLOW_CONFIG_KEY);
+  const cfg = {
+    enabled: true,
+    auto_triage: true,
+    auto_reply: true,
+    default_assignee_model: 'openrouter/openai/gpt-4o-mini',
+    default_reply_template: 'Thanks for reporting this issue. Our team + AI assistant are reviewing it now.',
+    auto_status: 'in_review',
+    ...(parseJsonSafe(cfgRow?.config_value, {}) || {}),
+  };
+  if (!cfg.enabled) return res.status(409).json({ error: 'Reports AI flow is disabled' });
+  const inferred = inferQuestionBug(report.description, report.title);
+  const aiSummary = cfg.auto_triage ? inferred.summary : null;
+  const aiBug = cfg.auto_triage ? inferred.bug : null;
+  const actionTaken = cfg.auto_triage ? `Automated triage (${cfg.default_assignee_model})` : null;
+  db.prepare(
+    `UPDATE reports
+     SET status = ?, ai_triage_status = ?, ai_triage_summary = ?, ai_triage_bug = ?, action_taken = COALESCE(?, action_taken), updated_at = ?
+     WHERE id = ?`
+  ).run(cfg.auto_status || 'in_review', cfg.auto_triage ? 'completed' : 'pending', aiSummary, aiBug, actionTaken, nowIso(), req.params.id);
+  if (cfg.auto_reply) {
+    db.prepare('INSERT INTO notifications (user_id, title, body, created_at) VALUES (?, ?, ?, ?)')
+      .run(report.user_id, `Report #${report.id} received`, cfg.default_reply_template, nowIso());
+  }
+  createAuditLog({ actor: req.user, action: 'report_auto_flow', targetType: 'report', targetId: req.params.id, details: { cfg } });
+  res.json({ ok: true, ai_summary: aiSummary, ai_bug: aiBug });
 });
 
 router.get('/admin/content', requirePermission('content:view'), (_req, res) => {
@@ -2075,8 +2156,8 @@ router.post('/admin/notifications/templates', requirePermission('support:manage'
 router.post('/admin/notifications/send', requirePermission('support:manage'), (req, res) => {
   const schema = z.object({
     user_id: z.number().int().positive().optional().nullable(),
-    title: z.string().min(1),
-    body: z.string().min(1),
+    title: z.string().min(1).max(160),
+    body: z.string().min(1).max(1000),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid notification payload' });

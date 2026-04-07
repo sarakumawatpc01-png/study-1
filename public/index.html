@@ -1010,6 +1010,7 @@ function go(sec){
   if(sec==='superadmin')setTimeout(renderSuperAdminSections,20);
 }
 async function loadAdminReports(){return apiTry('/admin/reports',{},[]);}
+async function loadAdminReportFlowConfig(){return apiTry('/admin/reports/flow-config',{},null);}
 async function loadAdminContent(){return apiTry('/admin/content',{},[]);}
 async function loadAdminDashboard(){return apiTry('/admin/dashboard',{},null);}
 async function loadAdminUsers(){return apiTry('/admin/users',{},[]);}
@@ -1066,6 +1067,8 @@ function maskSecret(v){
   return `${s.slice(0,3)}••••••${s.slice(-2)}`;
 }
 const PAY_CURRENCIES=['INR'];
+const REPORTS_CHAPTER_HEADER_MAX_LEN=90;
+const USD_TO_INR_RATE=83;
 const PUBLIC_INGEST_WEBHOOK_VALIDATOR='/ingest/payments/webhooks/validate';
 function validatePaymentConfigUi({provider,mode,currency,keyId,keySecret}){
   if(currency!=='INR')return 'Currency must be INR only';
@@ -1101,6 +1104,32 @@ async function saveReportAction(id){
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save action');}
 }
+async function saveReportReply(id){
+  const message=document.getElementById(`ra-reply-${id}`)?.value?.trim()||'';
+  if(!message){showModal('errorMsg','Please enter reply message');return;}
+  try{
+    await apiFetch(`/admin/reports/${id}/reply`,{method:'POST',headers:adminHeaders(),body:JSON.stringify({message,mark_status:'in_review'})});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to send report reply');}
+}
+async function runReportAutoFlow(id){
+  try{
+    await apiFetch(`/admin/reports/${id}/auto-flow`,{method:'POST',headers:adminHeaders()});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to run automated report flow');}
+}
+async function saveReportFlowConfigUi(){
+  const enabled=document.getElementById('ra-flow-enabled')?.checked??true;
+  const auto_triage=document.getElementById('ra-flow-triage')?.checked??true;
+  const auto_reply=document.getElementById('ra-flow-reply')?.checked??true;
+  const default_assignee_model=document.getElementById('ra-flow-model')?.value?.trim()||'openrouter/openai/gpt-4o-mini';
+  const default_reply_template=document.getElementById('ra-flow-template')?.value?.trim()||'Thanks for reporting this issue. Our team + AI assistant are reviewing it now.';
+  const auto_status=document.getElementById('ra-flow-status')?.value||'in_review';
+  try{
+    await apiFetch('/admin/reports/flow-config',{method:'POST',headers:adminHeaders(),body:JSON.stringify({enabled,auto_triage,auto_reply,default_assignee_model,default_reply_template,auto_status})});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to save report flow config');}
+}
 function parseSyllabusBulkText(raw){
   const lines=String(raw||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
   const chapters=[];
@@ -1108,7 +1137,7 @@ function parseSyllabusBulkText(raw){
   for(const line of lines){
     const chapterMatch=line.match(/^(?:chapter|ch|module|unit)\s*[:\-]?\s*(.+)$/i);
     const bulletLine=line.replace(/^[-•*\d.()\s]+/,'').trim();
-    const isHeader=chapterMatch||(!line.match(/^[-•*\d]/)&&line.length>0&&line.length<90&&/[:：]$/.test(line));
+    const isHeader=chapterMatch||(!line.match(/^[-•*\d]/)&&line.length>0&&line.length<REPORTS_CHAPTER_HEADER_MAX_LEN&&/[:：]$/.test(line));
     if(isHeader){
       const name=(chapterMatch?chapterMatch[1]:line.replace(/[:：]$/,'')).trim();
       current={chapter:name,topics:[]};
@@ -1225,11 +1254,11 @@ async function sendAdminNotificationUi(){
   const title=document.getElementById('sa-send-title')?.value?.trim()||'';
   const body=document.getElementById('sa-send-body')?.value?.trim()||'';
   if(!title||!body){showModal('errorMsg','Notification title and body are required');return;}
-  const user_id=userIdText?Number(userIdText):null;
+  const userId=userIdText?Number(userIdText):null;
   try{
-    await apiFetch('/admin/notifications/send',{method:'POST',headers:adminHeaders(),body:JSON.stringify({title,body,user_id})});
+    await apiFetch('/admin/notifications/send',{method:'POST',headers:adminHeaders(),body:JSON.stringify({title,body,user_id:userId})});
     showModal('adminActionSaved');
-    if(!user_id)await loadServerNotifications();
+    if(!userId)await loadServerNotifications();
   }catch(e){showModal('errorMsg',e.message||'Failed to send notification');}
 }
 
@@ -1559,7 +1588,7 @@ async function renderSuperAdminSections(){
       oEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px">
         ${[
           ['Total Users',k.totalUsers],['Active Today',k.activeToday],['New Signups',k.newSignups],['Retention %',k.retentionPct],
-          ['Task Completion %',k.taskCompletionPct],['API Latency (ms)',k.apiLatencyMs],['API Error %',k.apiErrorRatePct],['AI Cost (₹ est.)',Math.round(Number(k.aiCostUsd||0)*83)]
+          ['Task Completion %',k.taskCompletionPct],['API Latency (ms)',k.apiLatencyMs],['API Error %',k.apiErrorRatePct],['AI Cost (₹ est.)',Math.round(Number(k.aiCostUsd||0)*USD_TO_INR_RATE)]
         ].map(([n,v])=>`<div class="alt a-i"><div style="font-size:10px;color:var(--muted)">${n}</div><div style="font-size:18px;font-weight:800">${escHtml(v??0)}</div></div>`).join('')}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
@@ -1579,9 +1608,30 @@ async function renderSuperAdminSections(){
     }
   }
   if(rEl){
-    const reports=await loadAdminReports();
-    if(!reports.length)rEl.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="alt a-i">No reports yet. Placeholder: Question quality report cards will appear here.</div><div class="alt a-s">Placeholder: User bug reports and support escalations will be triaged here.</div></div>';
-    else rEl.innerHTML=reports.map(r=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
+    const [reports,flowCfgRaw]=await Promise.all([loadAdminReports(),loadAdminReportFlowConfig()]);
+    const flowCfg=flowCfgRaw||{
+      enabled:true,auto_triage:true,auto_reply:true,default_assignee_model:'openrouter/openai/gpt-4o-mini',
+      default_reply_template:'Thanks for reporting this issue. Our team + AI assistant are reviewing it now.',auto_status:'in_review'
+    };
+    const demoReports=reports.length?reports:[
+      {id:'D-101',title:'Mock Test Q47 wrong answer',category:'question',name:'Demo User',email:'demo@example.com',status:'open',description:'Option C seems correct but system marks B.',ai_triage_status:'completed',ai_triage_summary:'Likely answer-key mismatch.',ai_triage_bug:'Answer key mapping might be incorrect.',action_taken:'',admin_note:''},
+      {id:'D-102',title:'Report UI not loading',category:'bug',name:'Demo User 2',email:'demo2@example.com',status:'in_review',description:'Reports screen stays blank after refresh.',ai_triage_status:'pending',ai_triage_summary:'',ai_triage_bug:'',action_taken:'',admin_note:''}
+    ];
+    rEl.innerHTML=`
+      <div class="card" style="margin-bottom:10px"><div class="cb">
+        <div style="font-size:12px;font-weight:800;margin-bottom:8px">🤖 Reports Automation Flow</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <label class="alt a-s" style="margin:0"><input id="ra-flow-enabled" type="checkbox" ${flowCfg.enabled?'checked':''}> Enable flow</label>
+          <label class="alt a-s" style="margin:0"><input id="ra-flow-triage" type="checkbox" ${flowCfg.auto_triage?'checked':''}> Auto triage</label>
+          <label class="alt a-s" style="margin:0"><input id="ra-flow-reply" type="checkbox" ${flowCfg.auto_reply?'checked':''}> Auto reply</label>
+          <input id="ra-flow-model" class="fc" placeholder="AI model route" value="${escHtml(flowCfg.default_assignee_model||'openrouter/openai/gpt-4o-mini')}">
+          <select id="ra-flow-status" class="fc"><option value="open" ${flowCfg.auto_status==='open'?'selected':''}>open</option><option value="in_review" ${flowCfg.auto_status==='in_review'?'selected':''}>in_review</option><option value="resolved" ${flowCfg.auto_status==='resolved'?'selected':''}>resolved</option><option value="closed" ${flowCfg.auto_status==='closed'?'selected':''}>closed</option><option value="escalated" ${flowCfg.auto_status==='escalated'?'selected':''}>escalated</option></select>
+          <input id="ra-flow-template" class="fc" style="grid-column:1/4" placeholder="Auto-reply template" value="${escHtml(flowCfg.default_reply_template||'')}">
+        </div>
+        <button class="btn btn-sm btn-br" style="margin-top:8px" onclick="saveReportFlowConfigUi()">Save Reports Flow Config</button>
+      </div></div>
+      ${!reports.length?'<div class="alt a-i" style="margin-bottom:8px">No real reports yet — showing demo reports to preview interface.</div>':''}
+      ${demoReports.map(r=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
         <div><div style="font-size:13px;font-weight:800">${escHtml(r.title)}</div><div style="font-size:11px;color:var(--muted)">#${r.id} · ${escHtml(r.category)} · ${escHtml(r.name)} (${escHtml(r.email)})</div></div>
         <span class="bdg ${r.status==='resolved'?'g':r.status==='closed'?'gr':'o'}">${r.status}</span>
@@ -1592,9 +1642,14 @@ async function renderSuperAdminSections(){
         <select class="fc" id="ra-status-${r.id}"><option value="open" ${r.status==='open'?'selected':''}>open</option><option value="in_review" ${r.status==='in_review'?'selected':''}>in_review</option><option value="resolved" ${r.status==='resolved'?'selected':''}>resolved</option><option value="closed" ${r.status==='closed'?'selected':''}>closed</option></select>
         <input class="fc" id="ra-action-${r.id}" placeholder="Action taken" value="${escHtml(r.action_taken||'')}">
         <input class="fc" id="ra-note-${r.id}" style="grid-column:1/3" placeholder="Admin note" value="${escHtml(r.admin_note||'')}">
+        <input class="fc" id="ra-reply-${r.id}" style="grid-column:1/3" placeholder="Reply to user">
       </div>
-      <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="saveReportAction(${r.id})">Save Action</button>
-    </div>`).join('');
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn btn-br btn-sm" onclick="saveReportAction(${r.id})" ${reports.length?'':'disabled'}>Save Action</button>
+        <button class="btn btn-gh btn-sm" onclick="saveReportReply(${r.id})" ${reports.length?'':'disabled'}>Reply to User</button>
+        <button class="btn btn-gh btn-sm" onclick="runReportAutoFlow(${r.id})" ${reports.length?'':'disabled'}>Run AI Auto Flow</button>
+      </div>
+    </div>`).join('')}`;
   }
   if(cEl){
     const content=await loadAdminContent();
@@ -1677,6 +1732,7 @@ async function renderSuperAdminSections(){
           {feature:'personalized.notifications',label:'Personalized notification messaging',options:[['openrouter/openai/gpt-4o-mini','OpenRouter'],['deepseek/deepseek-chat','DeepSeek'],['sarvam/customer-support','Sarvam']]},
           {feature:'mocktests.ocr',label:'OCR PDF scanning',options:[['mistral-ocr-latest','Mistral OCR'],['openrouter/openai/gpt-4o-mini','OpenRouter'],['deepseek/deepseek-chat','DeepSeek']]},
           {feature:'content.ingest.sort',label:'PDF data sorting and question/answer structuring',options:[['openrouter/openai/gpt-4o-mini','OpenRouter'],['deepseek/deepseek-chat','DeepSeek'],['sarvam/sarvam-m','Sarvam']]},
+          {feature:'reports.triage',label:'Reports triage and support workflow automation',options:[['openrouter/openai/gpt-4o-mini','OpenRouter'],['deepseek/deepseek-chat','DeepSeek'],['sarvam/customer-support','Sarvam']]},
         ].map(task=>`<div style="border:1px solid var(--border);border-radius:8px;padding:8px">
           <div style="font-size:12px;font-weight:700;margin-bottom:6px">${task.label}</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1760,7 +1816,7 @@ async function renderSuperAdminSections(){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px">
          <select id="sa-pay-provider" class="fc" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}><option value="razorpay" ${payProvider==='razorpay'?'selected':''}>Razorpay</option><option value="stripe" ${payProvider==='stripe'?'selected':''}>Stripe</option><option value="cashfree" ${payProvider==='cashfree'?'selected':''}>Cashfree</option></select>
          <select id="sa-pay-mode" class="fc" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}><option value="test" ${payMode==='test'?'selected':''}>test</option><option value="live" ${payMode==='live'?'selected':''}>live</option></select>
-         <input id="sa-pay-currency" class="fc" placeholder="Currency (INR only)" value="INR" readonly ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
+         <input id="sa-pay-currency" class="fc" placeholder="Currency (INR only)" value="INR" disabled aria-disabled="true" aria-label="Currency is fixed to INR only">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
          <input id="sa-pay-key-id" class="fc" placeholder="Gateway key id / publishable key" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>

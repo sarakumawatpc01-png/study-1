@@ -95,6 +95,22 @@ db.prepare(
   'INSERT OR IGNORE INTO retention_policies (policy_key, keep_days, enabled, updated_at) VALUES (?, ?, 1, ?)'
 ).run('audit_log', 365, new Date().toISOString());
 
+db.prepare(
+  'INSERT OR IGNORE INTO config_settings (config_key, config_value, validation_rule, updated_at) VALUES (?, ?, ?, ?)'
+).run(
+  'reports.ai.flow',
+  JSON.stringify({
+    enabled: true,
+    auto_triage: true,
+    auto_reply: true,
+    default_assignee_model: 'openrouter/openai/gpt-4o-mini',
+    default_reply_template: 'Thanks for reporting this issue. Our team + AI assistant are reviewing it now.',
+    auto_status: 'in_review',
+  }),
+  'json',
+  new Date().toISOString()
+);
+
 function ensureRolePermissions(role, requiredPermissions) {
   const row = db.prepare('SELECT permissions_json FROM role_permissions WHERE role = ?').get(role);
   if (!row) return;

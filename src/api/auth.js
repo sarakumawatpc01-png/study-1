@@ -35,6 +35,8 @@ const CAPTCHA_AFTER_FAILURES = 3;
 const TWO_FACTOR_AFTER_FAILURES = 5;
 const CAPTCHA_TTL_MS = 5 * 60 * 1000;
 const TWO_FACTOR_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_PLATFORM_LANGUAGE = 'English';
+const DEFAULT_TEST_LANGUAGE = 'English';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -130,6 +132,8 @@ function sendSignupAlertWebhook(user) {
   const webhookUrl = String(process.env.SIGNUP_ALERT_WEBHOOK_URL || '').trim();
   if (!webhookUrl) return;
   try {
+    const parsed = new URL(webhookUrl);
+    if (!['https:', 'http:'].includes(parsed.protocol)) return;
     const payload = JSON.stringify({
       event: 'user.signup',
       user: { id: user.id, email: user.email, name: user.name, exam: user.exam },
@@ -177,7 +181,7 @@ router.post('/signup', authLimiter, async (req, res) => {
       .prepare(
         'INSERT INTO users (email, password_hash, name, exam, platform_language, test_language, role, is_active, token_version, mfa_enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?)'
       )
-      .run(email, passwordHash, name, exam, 'English', 'English', 'student', createdAt);
+      .run(email, passwordHash, name, exam, DEFAULT_PLATFORM_LANGUAGE, DEFAULT_TEST_LANGUAGE, 'student', createdAt);
     db.prepare('INSERT INTO profiles (user_id, mood, readiness_score) VALUES (?, ?, ?)')
       .run(result.lastInsertRowid, 'Normal / Okay', 50);
     return result.lastInsertRowid;
@@ -263,8 +267,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       exam: user.exam,
       role: user.role,
       package_name: user.package_name || 'free',
-      platform_language: user.platform_language || 'English',
-      test_language: user.test_language || 'English',
+      platform_language: user.platform_language || DEFAULT_PLATFORM_LANGUAGE,
+      test_language: user.test_language || DEFAULT_TEST_LANGUAGE,
     },
   });
 });
@@ -301,8 +305,8 @@ router.post('/verify-2fa', loginLimiter, async (req, res) => {
       exam: user.exam,
       role: user.role,
       package_name: user.package_name || 'free',
-      platform_language: user.platform_language || 'English',
-      test_language: user.test_language || 'English',
+      platform_language: user.platform_language || DEFAULT_PLATFORM_LANGUAGE,
+      test_language: user.test_language || DEFAULT_TEST_LANGUAGE,
     },
   });
 });
