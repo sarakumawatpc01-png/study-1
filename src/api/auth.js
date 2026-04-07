@@ -37,6 +37,7 @@ const CAPTCHA_TTL_MS = 5 * 60 * 1000;
 const TWO_FACTOR_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_PLATFORM_LANGUAGE = 'English';
 const DEFAULT_TEST_LANGUAGE = 'English';
+const SIGNUP_WEBHOOK_TIMEOUT_MS = 3000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,14 +134,24 @@ function sendSignupAlertWebhook(user) {
   if (!webhookUrl) return;
   try {
     const parsed = new URL(webhookUrl);
-    if (!['https:', 'http:'].includes(parsed.protocol)) return;
+    if (parsed.protocol !== 'https:') return;
     const payload = JSON.stringify({
       event: 'user.signup',
       user: { id: user.id, email: user.email, name: user.name, exam: user.exam },
       occurred_at: new Date().toISOString(),
     });
-    const req = https.request(webhookUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } });
-    req.on('error', () => {});
+    const req = https.request(webhookUrl, {
+      method: 'POST',
+      timeout: SIGNUP_WEBHOOK_TIMEOUT_MS,
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) },
+    });
+    req.on('error', (err) => {
+      if (process.env.NODE_ENV !== 'production') console.warn('signup webhook error:', err?.message || 'unknown');
+    });
+    req.on('timeout', () => {
+      if (process.env.NODE_ENV !== 'production') console.warn('signup webhook timeout');
+      req.destroy();
+    });
     req.write(payload);
     req.end();
   } catch (_err) {}

@@ -80,7 +80,7 @@ function isSafeBackupPath(p) {
 }
 
 const PAYMENT_CONFIG_KEY = 'payments.gateway';
-const PAYMENT_CURRENCIES = ['INR'];
+const PAYMENT_CURRENCY = 'INR';
 const REPORTS_FLOW_CONFIG_KEY = 'reports.ai.flow';
 const CONNECTION_TEST_LIMIT_WINDOW_MS = 60 * 1000;
 const CONNECTION_TEST_LIMIT_MAX = 5;
@@ -249,7 +249,7 @@ function paymentSettingsSchema() {
   return z.object({
     provider: z.enum(['razorpay', 'stripe', 'cashfree']),
     mode: z.enum(['test', 'live']),
-    currency: z.enum(PAYMENT_CURRENCIES),
+    currency: z.literal(PAYMENT_CURRENCY),
     key_id: z.string().min(6).max(150),
     key_secret: z.string().min(8).max(200),
     webhook_secret: z.string().max(200).optional().nullable(),
@@ -285,7 +285,7 @@ function externalPaymentSettingsSchema() {
   return z.object({
     provider: z.enum(['razorpay', 'stripe', 'cashfree']),
     mode: z.enum(['test', 'live']),
-    currency: z.enum(PAYMENT_CURRENCIES),
+    currency: z.literal(PAYMENT_CURRENCY),
     external_secret_ref: z.string().min(3).max(120),
   });
 }
@@ -1848,7 +1848,7 @@ router.post('/admin/payments/rotate', requirePermission('payments:settings'), (r
   const schema = z.object({
     provider: z.enum(['razorpay', 'stripe', 'cashfree']),
     mode: z.enum(['test', 'live']),
-    currency: z.enum(PAYMENT_CURRENCIES),
+    currency: z.literal(PAYMENT_CURRENCY),
     key_id: z.string().min(6).max(150).optional(),
     key_secret: z.string().min(8).max(200).optional(),
     webhook_secret: z.string().max(200).optional().nullable(),

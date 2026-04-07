@@ -647,6 +647,10 @@ const D={
     {ic:'🏛️',title:'SSC MTS 2025',posts:'9,583',dept:'Various Depts',last:'Closed',exam:'June–July 2026',isNew:false},
   ],
 };
+const SA_DEMO_REPORTS=[
+  {id:'D-101',title:'Mock Test Q47 wrong answer',category:'question',name:'Demo User',email:'demo@example.com',status:'open',description:'Option C seems correct but system marks B.',ai_triage_status:'completed',ai_triage_summary:'Likely answer-key mismatch.',ai_triage_bug:'Answer key mapping might be incorrect.',action_taken:'',admin_note:''},
+  {id:'D-102',title:'Report UI not loading',category:'bug',name:'Demo User 2',email:'demo2@example.com',status:'in_review',description:'Reports screen stays blank after refresh.',ai_triage_status:'pending',ai_triage_summary:'',ai_triage_bug:'',action_taken:'',admin_note:''},
+];
 
 let tAns={},tCurr=0,tTimer,tSecs=1800;
 let caAns={},caTimerInt;
@@ -1066,12 +1070,13 @@ function maskSecret(v){
   if(s.length<=6)return '••••••';
   return `${s.slice(0,3)}••••••${s.slice(-2)}`;
 }
-const PAY_CURRENCIES=['INR'];
+const PAY_CURRENCY='INR';
 const REPORTS_CHAPTER_HEADER_MAX_LEN=90;
+// Estimated conversion for dashboard display (last reviewed: 2026-04-07); update periodically or wire to config.
 const USD_TO_INR_RATE=83;
 const PUBLIC_INGEST_WEBHOOK_VALIDATOR='/ingest/payments/webhooks/validate';
 function validatePaymentConfigUi({provider,mode,currency,keyId,keySecret}){
-  if(currency!=='INR')return 'Currency must be INR only';
+  if(currency!==PAY_CURRENCY)return 'Currency must be INR only';
   if(!['test','live'].includes(mode))return 'Mode must be test or live';
   if(provider==='razorpay'){
     if(!/^rzp_(test|live)_[A-Za-z0-9]+$/.test(keyId))return 'Razorpay key id format invalid';
@@ -1135,9 +1140,13 @@ function parseSyllabusBulkText(raw){
   const chapters=[];
   let current=null;
   for(const line of lines){
+    // Heuristic: treat explicit chapter keywords or short non-bulleted lines ending with ":" as chapter headers.
     const chapterMatch=line.match(/^(?:chapter|ch|module|unit)\s*[:\-]?\s*(.+)$/i);
     const bulletLine=line.replace(/^[-•*\d.()\s]+/,'').trim();
-    const isHeader=chapterMatch||(!line.match(/^[-•*\d]/)&&line.length>0&&line.length<REPORTS_CHAPTER_HEADER_MAX_LEN&&/[:：]$/.test(line));
+    const startsWithBullet=/^[-•*\d]/.test(line);
+    const hasHeaderSuffix=/[:：]$/.test(line);
+    const looksLikeHeader=!startsWithBullet&&line.length>0&&line.length<REPORTS_CHAPTER_HEADER_MAX_LEN&&hasHeaderSuffix;
+    const isHeader=Boolean(chapterMatch)||looksLikeHeader;
     if(isHeader){
       const name=(chapterMatch?chapterMatch[1]:line.replace(/[:：]$/,'')).trim();
       current={chapter:name,topics:[]};
@@ -1613,10 +1622,7 @@ async function renderSuperAdminSections(){
       enabled:true,auto_triage:true,auto_reply:true,default_assignee_model:'openrouter/openai/gpt-4o-mini',
       default_reply_template:'Thanks for reporting this issue. Our team + AI assistant are reviewing it now.',auto_status:'in_review'
     };
-    const demoReports=reports.length?reports:[
-      {id:'D-101',title:'Mock Test Q47 wrong answer',category:'question',name:'Demo User',email:'demo@example.com',status:'open',description:'Option C seems correct but system marks B.',ai_triage_status:'completed',ai_triage_summary:'Likely answer-key mismatch.',ai_triage_bug:'Answer key mapping might be incorrect.',action_taken:'',admin_note:''},
-      {id:'D-102',title:'Report UI not loading',category:'bug',name:'Demo User 2',email:'demo2@example.com',status:'in_review',description:'Reports screen stays blank after refresh.',ai_triage_status:'pending',ai_triage_summary:'',ai_triage_bug:'',action_taken:'',admin_note:''}
-    ];
+    const demoReports=reports.length?reports:SA_DEMO_REPORTS;
     rEl.innerHTML=`
       <div class="card" style="margin-bottom:10px"><div class="cb">
         <div style="font-size:12px;font-weight:800;margin-bottom:8px">🤖 Reports Automation Flow</div>
@@ -1631,7 +1637,7 @@ async function renderSuperAdminSections(){
         <button class="btn btn-sm btn-br" style="margin-top:8px" onclick="saveReportFlowConfigUi()">Save Reports Flow Config</button>
       </div></div>
       ${!reports.length?'<div class="alt a-i" style="margin-bottom:8px">No real reports yet — showing demo reports to preview interface.</div>':''}
-      ${demoReports.map(r=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
+      ${demoReports.map(r=>{const actionDisabled=reports.length?'':'disabled title="Available only for real reports"';return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
         <div><div style="font-size:13px;font-weight:800">${escHtml(r.title)}</div><div style="font-size:11px;color:var(--muted)">#${r.id} · ${escHtml(r.category)} · ${escHtml(r.name)} (${escHtml(r.email)})</div></div>
         <span class="bdg ${r.status==='resolved'?'g':r.status==='closed'?'gr':'o'}">${r.status}</span>
@@ -1645,11 +1651,11 @@ async function renderSuperAdminSections(){
         <input class="fc" id="ra-reply-${r.id}" style="grid-column:1/3" placeholder="Reply to user">
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-        <button class="btn btn-br btn-sm" onclick="saveReportAction(${r.id})" ${reports.length?'':'disabled'}>Save Action</button>
-        <button class="btn btn-gh btn-sm" onclick="saveReportReply(${r.id})" ${reports.length?'':'disabled'}>Reply to User</button>
-        <button class="btn btn-gh btn-sm" onclick="runReportAutoFlow(${r.id})" ${reports.length?'':'disabled'}>Run AI Auto Flow</button>
+        <button class="btn btn-br btn-sm" onclick="saveReportAction(${r.id})" ${actionDisabled}>Save Action</button>
+        <button class="btn btn-gh btn-sm" onclick="saveReportReply(${r.id})" ${actionDisabled}>Reply to User</button>
+        <button class="btn btn-gh btn-sm" onclick="runReportAutoFlow(${r.id})" ${actionDisabled}>Run AI Auto Flow</button>
       </div>
-    </div>`).join('')}`;
+    </div>`;}).join('')}`;
   }
   if(cEl){
     const content=await loadAdminContent();
@@ -1816,7 +1822,7 @@ async function renderSuperAdminSections(){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px">
          <select id="sa-pay-provider" class="fc" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}><option value="razorpay" ${payProvider==='razorpay'?'selected':''}>Razorpay</option><option value="stripe" ${payProvider==='stripe'?'selected':''}>Stripe</option><option value="cashfree" ${payProvider==='cashfree'?'selected':''}>Cashfree</option></select>
          <select id="sa-pay-mode" class="fc" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}><option value="test" ${payMode==='test'?'selected':''}>test</option><option value="live" ${payMode==='live'?'selected':''}>live</option></select>
-         <input id="sa-pay-currency" class="fc" placeholder="Currency (INR only)" value="INR" disabled aria-disabled="true" aria-label="Currency is fixed to INR only">
+         <input id="sa-pay-currency" class="fc" placeholder="Currency (INR only)" value="INR" disabled aria-label="Currency is fixed to INR only">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
          <input id="sa-pay-key-id" class="fc" placeholder="Gateway key id / publishable key" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
@@ -1955,7 +1961,7 @@ function renderSuperadminServerCharts(su={}){
   const used=Number(su.memoryUsedMb||0);
   const total=Math.max(Number(su.memoryTotalMb||0),used,1);
   const free=Math.max(total-used,0);
-  window.__saServerUsageChart=new Chart(usageEl,{type:'doughnut',data:{labels:['Used MB','Free MB'],datasets:[{data:[used,free],backgroundColor:['#ef4444','#22c55e']}]} ,options:{plugins:{legend:{display:true}}}});
+  window.__saServerUsageChart=new Chart(usageEl,{type:'doughnut',data:{labels:['Used MB','Free MB'],datasets:[{data:[used,free],backgroundColor:['#ef4444','#22c55e']}]},options:{plugins:{legend:{display:true}}}});
   const loads=Array.isArray(su.loadAverage)?su.loadAverage.map(v=>Number(v)||0):[0,0,0];
   window.__saServerLoadChart=new Chart(loadEl,{type:'bar',data:{labels:['Load 1m','Load 5m','Load 15m'],datasets:[{data:loads,backgroundColor:['#3b82f6','#60a5fa','#93c5fd'],borderRadius:6}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
 }
