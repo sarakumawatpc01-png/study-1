@@ -655,7 +655,7 @@ let authToken=localStorage.getItem('study_token')||'';
 let currentUser=null;
 let serverAnalytics=null;
 let securityPromptResolver=null;
-const pathMode=((String(location.pathname||'').replace(/\/+$/,'')||'/').toLowerCase());
+const normalizedPath=((String(location.pathname||'').replace(/\/+$/,'')||'/').toLowerCase());
 const MAX_CAPTCHA_PROMPT_ATTEMPTS=8;
 const FOCUS_STATE_KEY='exambhai_active_task_v1';
 const API_BASE='/api';
@@ -779,7 +779,7 @@ async function submitPathLogin(mode){
     const me=await apiFetch('/auth/me');
     currentUser=me;
     syncUserProfilePrefs(me);
-    if(mode==='admin'&&String(me.role||'student')==='student')throw new Error('This account does not have admin access.');
+    if(mode==='admin'&&!['admin','superadmin'].includes(String(me.role||'').toLowerCase()))throw new Error('This account does not have admin access.');
     hideAuthGate();
     document.getElementById('ob').classList.add('hidden');
     document.getElementById('app').classList.add('on');
@@ -807,10 +807,16 @@ function renderPathLogin(mode){
       <label class="auth-lbl">Email</label>
       <input id="auth-email" class="auth-input" type="email" placeholder="you@example.com">
       <label class="auth-lbl">Password</label>
-      <input id="auth-password" class="auth-input" type="password" placeholder="Enter password" onkeypress="if(event.key==='Enter')submitPathLogin('${mode}')">
+      <input id="auth-password" class="auth-input" type="password" placeholder="Enter password">
       <button class="ob-btn" onclick="submitPathLogin('${mode}')">${mode==='admin'?'Login to Superadmin':'Login'}</button>
       <div class="auth-note">${mode==='admin'?'Only admin/superadmin roles can continue after authentication.':'Need admin? visit /admin.'}</div>
     </div>`;
+  const passEl=document.getElementById('auth-password');
+  if(passEl){
+    passEl.addEventListener('keypress',(event)=>{
+      if(event.key==='Enter')submitPathLogin(mode);
+    });
+  }
 }
 async function ensureAuth(){
   if(authToken){
@@ -1161,12 +1167,12 @@ async function saveAiRoute(){
   }catch(e){showModal('errorMsg',e.message||'Failed to save AI route');}
 }
 function assignAiRoleUi(feature,model,fallback=''){
-  const f=document.getElementById('sa-route-feature');
-  const m=document.getElementById('sa-route-model');
-  const fb=document.getElementById('sa-route-fallback');
-  if(f)f.value=feature;
-  if(m)m.value=model;
-  if(fb)fb.value=fallback;
+  const featureInput=document.getElementById('sa-route-feature');
+  const modelInput=document.getElementById('sa-route-model');
+  const fallbackInput=document.getElementById('sa-route-fallback');
+  if(featureInput)featureInput.value=feature;
+  if(modelInput)modelInput.value=model;
+  if(fallbackInput)fallbackInput.value=fallback;
   saveAiRoute();
 }
 async function saveMistralOcrUi(){
@@ -1542,8 +1548,8 @@ async function renderSuperAdminSections(){
     const users=await loadAdminUsers();
     if(!users.length)uEl.innerHTML='<div style="font-size:12px;color:var(--muted)">No users or permission denied.</div>';
     else{
-      const packageCounts=users.reduce((acc,u)=>{const k=(u.package_name||'free').toLowerCase();acc[k]=(acc[k]||0)+1;return acc;},{});
-      uEl.innerHTML=`<div class="alt a-i" style="margin-bottom:8px">Packages: ${Object.entries(packageCounts).map(([k,v])=>`${escHtml(k)} (${v})`).join(' · ')||'none'} · Click user row for billing/input details.</div><table>
+      const packageCounts=users.reduce((acc,u)=>{const packageName=(u.package_name||'free').toLowerCase();acc[packageName]=(acc[packageName]||0)+1;return acc;},{});
+      uEl.innerHTML=`<div class="alt a-i" style="margin-bottom:8px">Packages: ${Object.entries(packageCounts).map(([packageName,v])=>`${escHtml(packageName)} (${v})`).join(' · ')||'none'} · Click user row for billing/input details.</div><table>
       <tr><th>ID</th><th>Name</th><th>Email</th><th>Exam</th><th>Package</th><th>Platform Lang</th><th>Test/Paper Lang</th><th>Role</th><th>Status</th><th>Last Login</th></tr>
       ${users.slice(0,80).map(u=>`<tr onclick="showUserDetailUi(${u.id})" style="cursor:pointer"><td>${u.id}</td><td>${escHtml(u.name)}</td><td>${escHtml(u.email)}</td><td>${escHtml(u.exam)}</td><td>${escHtml(u.package_name||'free')}</td><td>${escHtml(u.platform_language||'Hinglish')}</td><td>${escHtml(u.test_language||'English')}</td><td>${escHtml(u.role||'student')}</td><td>${Number(u.is_active)===1?'active':'disabled'}</td><td>${u.last_login_at?new Date(u.last_login_at).toLocaleString():'-'}</td></tr>`).join('')}
     </table><div style="margin-top:8px;font-size:11px;color:var(--muted)">Click any user row to view collected input details (mood, tasks, tests, reports, notifications).</div>`;
@@ -3076,11 +3082,27 @@ function renderAdminNav(){
     nav.appendChild(lbl);nav.appendChild(item);
   }
 }
-if(pathMode==='/login'){
-  renderPathLogin('user');
-}else if(pathMode==='/admin'){
-  renderPathLogin('admin');
+async function initPathEntry(){
+  if(!['/login','/admin'].includes(normalizedPath))return;
+  if(authToken){
+    try{
+      currentUser=await apiFetch('/auth/me');
+      syncUserProfilePrefs(currentUser);
+      hideAuthGate();
+      document.getElementById('ob').classList.add('hidden');
+      document.getElementById('app').classList.add('on');
+      renderAdminNav();
+      loadTasks();
+      await hydrateFromServer();
+      if(normalizedPath==='/admin'&&['admin','superadmin'].includes(String(currentUser?.role||'').toLowerCase()))go('superadmin');
+      else go('home');
+      return;
+    }catch(_e){}
+  }
+  if(normalizedPath==='/login')renderPathLogin('user');
+  else if(normalizedPath==='/admin')renderPathLogin('admin');
 }
+initPathEntry();
 setTimeout(renderAdminNav,0);
 window.submitIssueReport=submitIssueReport;
 window.saveReportAction=saveReportAction;
