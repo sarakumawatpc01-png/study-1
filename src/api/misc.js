@@ -80,7 +80,7 @@ function isSafeBackupPath(p) {
 }
 
 const PAYMENT_CONFIG_KEY = 'payments.gateway';
-const PAYMENT_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
+const PAYMENT_CURRENCIES = ['INR'];
 const CONNECTION_TEST_LIMIT_WINDOW_MS = 60 * 1000;
 const CONNECTION_TEST_LIMIT_MAX = 5;
 const CIRCUIT_BREAKER_FAIL_THRESHOLD = 3;
@@ -537,7 +537,7 @@ function userSummaryById(userId) {
   const profileInput = {
     exam: user.exam,
     package_name: user.package_name || 'free',
-    platform_language: user.platform_language || 'Hinglish',
+    platform_language: user.platform_language || 'English',
     test_language: user.test_language || 'English',
     mood: user.mood || 'Normal / Okay',
     readiness_score: Number.isFinite(Number(user.readiness_score)) ? Number(user.readiness_score) : 50,
@@ -2070,6 +2070,27 @@ router.post('/admin/notifications/templates', requirePermission('support:manage'
   ).run(parsed.data.name, parsed.data.title_template, parsed.data.body_template, req.user.id, nowIso());
   createAuditLog({ actor: req.user, action: 'notification_template_upsert', targetType: 'notification_template', targetId: parsed.data.name, details: {} });
   res.json({ ok: true });
+});
+
+router.post('/admin/notifications/send', requirePermission('support:manage'), (req, res) => {
+  const schema = z.object({
+    user_id: z.number().int().positive().optional().nullable(),
+    title: z.string().min(1),
+    body: z.string().min(1),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid notification payload' });
+  const userId = parsed.data.user_id ? Number(parsed.data.user_id) : req.user.id;
+  db.prepare('INSERT INTO notifications (user_id, title, body, created_at) VALUES (?, ?, ?, ?)')
+    .run(userId, parsed.data.title, parsed.data.body, nowIso());
+  createAuditLog({
+    actor: req.user,
+    action: 'admin_notification_send',
+    targetType: 'notification',
+    targetId: String(userId),
+    details: { title: parsed.data.title },
+  });
+  res.status(201).json({ ok: true });
 });
 
 router.post('/admin/announcements', requirePermission('support:manage'), (req, res) => {

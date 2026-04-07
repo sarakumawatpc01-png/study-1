@@ -554,6 +554,7 @@ tr:hover td{background:#fafbfc;}
       <div class="ni" id="n-profile" onclick="go('profile')"><span class="ic">👤</span>Profile</div>
       <div class="ni" id="n-billing" onclick="go('billing')"><span class="ic">💳</span>Billing</div>
       <div class="ni" id="n-vacancy" onclick="go('vacancy')"><span class="ic">🔔</span>Vacancy Alerts</div>
+      <div class="ni" id="n-notifications" onclick="go('notifications')"><span class="ic">📨</span>Notifications</div>
     </div>
     <div class="sb-ft">
       <div class="sb-days">Exam mein <b>204</b> din bache</div>
@@ -581,7 +582,7 @@ tr:hover td{background:#fafbfc;}
    DEMO DATA
 ═══════════════════════════════════ */
 const D={
-  student:{name:'Rahul Kumar',exam:'SSC CGL 2026',days:204,score:62,streak:8,attempt:2,mood:'Normal / Okay',mood_today_done:false,package_name:'free',platform_language:'Hinglish',test_language:'English'},
+  student:{name:'Rahul Kumar',exam:'SSC CGL 2026',days:204,score:62,streak:8,attempt:2,mood:'Normal / Okay',mood_today_done:false,package_name:'free',platform_language:'English',test_language:'English'},
   subjects:{Quant:{acc:62,spd:24,trend:+8},Reasoning:{acc:71,spd:16,trend:+4},English:{acc:44,spd:18,trend:-2},GK:{acc:55,spd:12,trend:+5}},
   syllabus:{Quant:{done:9,total:14},Reasoning:{done:8,total:10},English:{done:4,total:10},GK:{done:7,total:10}},
   moodHistory:[
@@ -654,6 +655,7 @@ let activeTask=null,focusTicker=null,pendingSkipTaskIndex=null,pendingEarlyTaskI
 let authToken=localStorage.getItem('study_token')||'';
 let currentUser=null;
 let serverAnalytics=null;
+let inboxNotifications=[];
 let securityPromptResolver=null;
 const normalizedPath=((String(location.pathname||'').replace(/\/+$/,'')||'/').toLowerCase());
 const MAX_CAPTCHA_PROMPT_ATTEMPTS=8;
@@ -758,7 +760,7 @@ async function loginWithSecurity(payload){
 function syncUserProfilePrefs(user){
   if(!user)return;
   D.student.package_name=user.package_name||D.student.package_name||'free';
-  D.student.platform_language=user.platform_language||D.student.platform_language||'Hinglish';
+  D.student.platform_language=user.platform_language||D.student.platform_language||'English';
   D.student.test_language=user.test_language||D.student.test_language||'English';
 }
 function hideAuthGate(){
@@ -876,6 +878,7 @@ async function loadServerNotifications(){
   const el=document.getElementById('np-a');
   const cnt=document.getElementById('bbn');
   if(cnt)cnt.textContent=String(rows.filter(r=>!r.read_flag).length||0);
+  inboxNotifications=Array.isArray(rows)?rows:[];
   if(el&&Array.isArray(rows)&&rows.length){
     el.innerHTML=rows.map(r=>`<div class="np-it ${r.read_flag?'':'unrd'}"><div class="nit">${r.title}</div><div class="nib">${r.body}</div><div class="nit-t">${new Date(r.created_at).toLocaleString()}</div></div>`).join('');
   }
@@ -993,7 +996,7 @@ async function launch(){
 }
 
 /* ═══════ NAV ═══════ */
-const TITLES={home:'Aaj ka Plan (Home)',planner:'Planner',tests:'Mock Tests',pyp:'Previous Year Papers',ca:'Current Affairs',results:'Results',analytics:'Analytics',coach:'EXAMBHAI Coach AI',profile:'Profile',billing:'Billing',vacancy:'Vacancy Alerts',superadmin:'Superadmin Dashboard'};
+const TITLES={home:'Aaj ka Plan (Home)',planner:'Planner',tests:'Mock Tests',pyp:'Previous Year Papers',ca:'Current Affairs',results:'Results',analytics:'Analytics',coach:'EXAMBHAI Coach AI',profile:'Profile',billing:'Billing',vacancy:'Vacancy Alerts',notifications:'Notifications',superadmin:'Superadmin Dashboard'};
 function go(sec){
   document.querySelectorAll('.ni').forEach(e=>e.classList.remove('on'));
   const ni=document.getElementById('n-'+sec);if(ni)ni.classList.add('on');
@@ -1062,10 +1065,10 @@ function maskSecret(v){
   if(s.length<=6)return '••••••';
   return `${s.slice(0,3)}••••••${s.slice(-2)}`;
 }
-const PAY_CURRENCIES=['INR','USD','EUR','GBP','AED','SGD'];
+const PAY_CURRENCIES=['INR'];
 const PUBLIC_INGEST_WEBHOOK_VALIDATOR='/ingest/payments/webhooks/validate';
 function validatePaymentConfigUi({provider,mode,currency,keyId,keySecret}){
-  if(!PAY_CURRENCIES.includes(currency))return 'Currency must be one of: '+PAY_CURRENCIES.join(', ');
+  if(currency!=='INR')return 'Currency must be INR only';
   if(!['test','live'].includes(mode))return 'Mode must be test or live';
   if(provider==='razorpay'){
     if(!/^rzp_(test|live)_[A-Za-z0-9]+$/.test(keyId))return 'Razorpay key id format invalid';
@@ -1098,6 +1101,29 @@ async function saveReportAction(id){
     showModal('adminActionSaved');go('superadmin');
   }catch(e){showModal('errorMsg',e.message||'Failed to save action');}
 }
+function parseSyllabusBulkText(raw){
+  const lines=String(raw||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const chapters=[];
+  let current=null;
+  for(const line of lines){
+    const chapterMatch=line.match(/^(?:chapter|ch|module|unit)\s*[:\-]?\s*(.+)$/i);
+    const bulletLine=line.replace(/^[-•*\d.()\s]+/,'').trim();
+    const isHeader=chapterMatch||(!line.match(/^[-•*\d]/)&&line.length>0&&line.length<90&&/[:：]$/.test(line));
+    if(isHeader){
+      const name=(chapterMatch?chapterMatch[1]:line.replace(/[:：]$/,'')).trim();
+      current={chapter:name,topics:[]};
+      chapters.push(current);
+      continue;
+    }
+    if(!current){
+      current={chapter:'General',topics:[]};
+      chapters.push(current);
+    }
+    if(bulletLine)current.topics.push(bulletLine);
+  }
+  return chapters.filter(c=>c.chapter&&c.topics.length);
+}
+
 async function createAdminContent(){
   const type=document.getElementById('ac-type')?.value||'course';
   const courseKey=document.getElementById('ac-course-key')?.value?.trim()||'';
@@ -1107,6 +1133,7 @@ async function createAdminContent(){
   const status=document.getElementById('ac-status')?.value||'active';
   const useOcr=document.getElementById('ac-use-ocr')?.checked||false;
   const dataText=document.getElementById('ac-data')?.value?.trim()||'{}';
+  const syllabusBulk=document.getElementById('ac-syllabus-bulk')?.value?.trim()||'';
   if(!title){showModal('errorMsg','Please enter title');return;}
   if(!courseKey){showModal('errorMsg','Please enter course/exam key');return;}
   try{
@@ -1123,11 +1150,19 @@ async function createAdminContent(){
         metadata=JSON.parse(dataText);
       }catch(e){showModal('errorMsg','OCR pages or metadata JSON is invalid');return;}
       metadata.content_language=contentLanguage;
+      if(type==='syllabus'&&syllabusBulk){
+        metadata.syllabus_chapters=parseSyllabusBulkText(syllabusBulk);
+        metadata.syllabus_raw_text=syllabusBulk;
+      }
       await apiFetch('/admin/content/upload-ocr',{method:'POST',headers:adminHeaders(),body:JSON.stringify({course_key:courseKey,content_type:type,title,description:description||null,status,source_file_name:sourceFile,source_mime_type:sourceMime,raw_text:rawText,pages,metadata})});
     }else{
       let dataObj={};
       try{dataObj=JSON.parse(dataText);}catch(e){showModal('errorMsg','Metadata JSON is invalid');return;}
       dataObj.content_language=contentLanguage;
+      if(type==='syllabus'&&syllabusBulk){
+        dataObj.syllabus_chapters=parseSyllabusBulkText(syllabusBulk);
+        dataObj.syllabus_raw_text=syllabusBulk;
+      }
       await apiFetch('/admin/content',{method:'POST',headers:adminHeaders(),body:JSON.stringify({course_key:courseKey,content_type:type,title,description:description||null,status,data:dataObj})});
     }
     showModal('adminContentSaved');go('superadmin');
@@ -1175,6 +1210,29 @@ function assignAiRoleUi(feature,model,fallback=''){
   if(fallbackInput)fallbackInput.value=fallback;
   saveAiRoute();
 }
+async function saveAiTaskAssignmentUi(feature){
+  const input=document.querySelector(`input[name=\"ai-assignment-${feature}\"]:checked`);
+  if(!input){showModal('errorMsg','Select exactly one AI for this task');return;}
+  const model=input.value;
+  try{
+    await apiFetch('/admin/ai/routes',{method:'POST',headers:adminHeaders(),body:JSON.stringify({feature,model,fallback_model:null})});
+    showModal('adminActionSaved');go('superadmin');
+  }catch(e){showModal('errorMsg',e.message||'Failed to save AI assignment');}
+}
+
+async function sendAdminNotificationUi(){
+  const userIdText=document.getElementById('sa-send-user-id')?.value?.trim()||'';
+  const title=document.getElementById('sa-send-title')?.value?.trim()||'';
+  const body=document.getElementById('sa-send-body')?.value?.trim()||'';
+  if(!title||!body){showModal('errorMsg','Notification title and body are required');return;}
+  const user_id=userIdText?Number(userIdText):null;
+  try{
+    await apiFetch('/admin/notifications/send',{method:'POST',headers:adminHeaders(),body:JSON.stringify({title,body,user_id})});
+    showModal('adminActionSaved');
+    if(!user_id)await loadServerNotifications();
+  }catch(e){showModal('errorMsg',e.message||'Failed to send notification');}
+}
+
 async function saveMistralOcrUi(){
   const enabled=document.getElementById('sa-ocr-enabled')?.checked??true;
   const model=document.getElementById('sa-ocr-model')?.value?.trim()||'';
@@ -1274,7 +1332,7 @@ async function showUserDetailUi(id){
     showModal('errorMsg',`
       <strong>${escHtml(u.name||'-')}</strong> (${escHtml(u.email||'-')})<br>
       Exam: ${escHtml(u.exam||'-')} · Role: ${escHtml(u.role||'student')} · Package: ${escHtml(u.package_name||'free')}<br>
-      Platform language: ${escHtml(u.platform_language||'Hinglish')} · Test language: ${escHtml(u.test_language||'English')}<br>
+      Platform language: ${escHtml(u.platform_language||'English')} · Test language: ${escHtml(u.test_language||'English')}<br>
       Readiness score: ${escHtml(profile.readiness_score??'-')} · Mood: ${escHtml(profile.mood||'-')}<br><br>
       <strong>Collected Input Snapshot</strong><br>
       Tasks: ${escHtml(tasks)}<br><br>
@@ -1284,7 +1342,7 @@ async function showUserDetailUi(id){
   }catch(e){showModal('errorMsg',e.message||'Failed to load user detail');}
 }
 function setPlatformLanguage(value){
-  D.student.platform_language=value||'Hinglish';
+  D.student.platform_language=value||'English';
 }
 function setTestLanguage(value){
   D.student.test_language=value||'English';
@@ -1501,7 +1559,7 @@ async function renderSuperAdminSections(){
       oEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px">
         ${[
           ['Total Users',k.totalUsers],['Active Today',k.activeToday],['New Signups',k.newSignups],['Retention %',k.retentionPct],
-          ['Task Completion %',k.taskCompletionPct],['API Latency (ms)',k.apiLatencyMs],['API Error %',k.apiErrorRatePct],['AI Cost (USD)',k.aiCostUsd]
+          ['Task Completion %',k.taskCompletionPct],['API Latency (ms)',k.apiLatencyMs],['API Error %',k.apiErrorRatePct],['AI Cost (₹ est.)',Math.round(Number(k.aiCostUsd||0)*83)]
         ].map(([n,v])=>`<div class="alt a-i"><div style="font-size:10px;color:var(--muted)">${n}</div><div style="font-size:18px;font-weight:800">${escHtml(v??0)}</div></div>`).join('')}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
@@ -1512,12 +1570,17 @@ async function renderSuperAdminSections(){
         <div class="alt a-i">Server CPU Cores: <strong>${escHtml(su.cpuCores??'-')}</strong> · Load: ${escHtml(Array.isArray(su.loadAverage)?su.loadAverage.map(v=>Number(v).toFixed(2)).join(' / '):'-')}</div>
         <div class="alt a-i">Server Memory: <strong>${escHtml(su.memoryUsedMb??'-')} MB</strong> / ${escHtml(su.memoryTotalMb??'-')} MB</div>
         <div class="alt a-i">Process RSS: <strong>${escHtml(su.processRssMb??'-')} MB</strong> · Heap: ${escHtml(su.processHeapUsedMb??'-')} MB · Uptime: ${escHtml(su.uptimeSeconds??0)}s</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+        <div class="card"><div class="cb"><canvas id="sa-server-usage-chart" height="140"></canvas></div></div>
+        <div class="card"><div class="cb"><canvas id="sa-server-load-chart" height="140"></canvas></div></div>
       </div>`;
+      setTimeout(()=>renderSuperadminServerCharts(su),0);
     }
   }
   if(rEl){
     const reports=await loadAdminReports();
-    if(!reports.length)rEl.innerHTML='<div style="font-size:12px;color:var(--muted)">No reports yet.</div>';
+    if(!reports.length)rEl.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="alt a-i">No reports yet. Placeholder: Question quality report cards will appear here.</div><div class="alt a-s">Placeholder: User bug reports and support escalations will be triaged here.</div></div>';
     else rEl.innerHTML=reports.map(r=>`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
         <div><div style="font-size:13px;font-weight:800">${escHtml(r.title)}</div><div style="font-size:11px;color:var(--muted)">#${r.id} · ${escHtml(r.category)} · ${escHtml(r.name)} (${escHtml(r.email)})</div></div>
@@ -1551,7 +1614,7 @@ async function renderSuperAdminSections(){
       const packageCounts=users.reduce((acc,u)=>{const packageName=(u.package_name||'free').toLowerCase();acc[packageName]=(acc[packageName]||0)+1;return acc;},{});
       uEl.innerHTML=`<div class="alt a-i" style="margin-bottom:8px">Packages: ${Object.entries(packageCounts).map(([packageName,v])=>`${escHtml(packageName)} (${v})`).join(' · ')||'none'} · Click user row for billing/input details.</div><table>
       <tr><th>ID</th><th>Name</th><th>Email</th><th>Exam</th><th>Package</th><th>Platform Lang</th><th>Test/Paper Lang</th><th>Role</th><th>Status</th><th>Last Login</th></tr>
-      ${users.slice(0,80).map(u=>`<tr onclick="showUserDetailUi(${u.id})" style="cursor:pointer"><td>${u.id}</td><td>${escHtml(u.name)}</td><td>${escHtml(u.email)}</td><td>${escHtml(u.exam)}</td><td>${escHtml(u.package_name||'free')}</td><td>${escHtml(u.platform_language||'Hinglish')}</td><td>${escHtml(u.test_language||'English')}</td><td>${escHtml(u.role||'student')}</td><td>${Number(u.is_active)===1?'active':'disabled'}</td><td>${u.last_login_at?new Date(u.last_login_at).toLocaleString():'-'}</td></tr>`).join('')}
+      ${users.slice(0,80).map(u=>`<tr onclick="showUserDetailUi(${u.id})" style="cursor:pointer"><td>${u.id}</td><td>${escHtml(u.name)}</td><td>${escHtml(u.email)}</td><td>${escHtml(u.exam)}</td><td>${escHtml(u.package_name||'free')}</td><td>${escHtml(u.platform_language||'English')}</td><td>${escHtml(u.test_language||'English')}</td><td>${escHtml(u.role||'student')}</td><td>${Number(u.is_active)===1?'active':'disabled'}</td><td>${u.last_login_at?new Date(u.last_login_at).toLocaleString():'-'}</td></tr>`).join('')}
     </table><div style="margin-top:8px;font-size:11px;color:var(--muted)">Click any user row to view collected input details (mood, tasks, tests, reports, notifications).</div>`;
     }
   }
@@ -1606,13 +1669,21 @@ async function renderSuperAdminSections(){
       <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="saveMistralOcrUi()">Save Mistral OCR Setup</button>
       <div class="alt a-s" style="margin-top:12px">General AI provider setup (for testing/provider switch)</div>
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px">${providersHtml}</div>
-      <div class="alt a-i" style="margin-top:12px">AI task assignment by feature</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('customer.support','sarvam/customer-support')">Customer Support → Sarvam</button>
-        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('study.planning','deepseek/deepseek-chat')">Study Planning → DeepSeek</button>
-        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('mocktests.ocr','mistral-ocr-latest')">Mock Test OCR → Mistral</button>
-        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('invoices.scan','mistral-ocr-latest')">Invoice Scan → Mistral</button>
-        <button class="btn btn-xs btn-gh" onclick="assignAiRoleUi('content.suggest-course','openrouter/auto')">Course Suggestion → OpenRouter</button>
+      <div class="alt a-i" style="margin-top:12px">AI task assignment (single selection per task)</div>
+      <div style="display:grid;grid-template-columns:1fr;gap:8px">
+        ${[
+          {feature:'customer.support',label:'Customer support and question enquiries',options:[['sarvam/customer-support','Sarvam'],['openrouter/openai/gpt-4o-mini','OpenRouter'],['deepseek/deepseek-chat','DeepSeek']]},
+          {feature:'study.planning',label:'Personalized daily planner (emotion/skip/exam date)',options:[['deepseek/deepseek-chat','DeepSeek'],['openrouter/openai/gpt-4o-mini','OpenRouter'],['sarvam/sarvam-m','Sarvam']]},
+          {feature:'personalized.notifications',label:'Personalized notification messaging',options:[['openrouter/openai/gpt-4o-mini','OpenRouter'],['deepseek/deepseek-chat','DeepSeek'],['sarvam/customer-support','Sarvam']]},
+          {feature:'mocktests.ocr',label:'OCR PDF scanning',options:[['mistral-ocr-latest','Mistral OCR'],['openrouter/openai/gpt-4o-mini','OpenRouter'],['deepseek/deepseek-chat','DeepSeek']]},
+          {feature:'content.ingest.sort',label:'PDF data sorting and question/answer structuring',options:[['openrouter/openai/gpt-4o-mini','OpenRouter'],['deepseek/deepseek-chat','DeepSeek'],['sarvam/sarvam-m','Sarvam']]},
+        ].map(task=>`<div style="border:1px solid var(--border);border-radius:8px;padding:8px">
+          <div style="font-size:12px;font-weight:700;margin-bottom:6px">${task.label}</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            ${task.options.map(([model,label],idx)=>`<label style="font-size:11px;display:flex;align-items:center;gap:4px"><input type="radio" name="ai-assignment-${task.feature}" value="${model}" ${idx===0?'checked':''}> ${label}</label>`).join('')}
+          </div>
+          <button class="btn btn-xs btn-gh" style="margin-top:8px" onclick="saveAiTaskAssignmentUi('${task.feature}')">Save Assignment</button>
+        </div>`).join('')}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
         <input id="sa-ai-course-target" class="fc" placeholder="Course target (e.g. SSC CGL 2026)">
@@ -1689,7 +1760,7 @@ async function renderSuperAdminSections(){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px">
          <select id="sa-pay-provider" class="fc" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}><option value="razorpay" ${payProvider==='razorpay'?'selected':''}>Razorpay</option><option value="stripe" ${payProvider==='stripe'?'selected':''}>Stripe</option><option value="cashfree" ${payProvider==='cashfree'?'selected':''}>Cashfree</option></select>
          <select id="sa-pay-mode" class="fc" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}><option value="test" ${payMode==='test'?'selected':''}>test</option><option value="live" ${payMode==='live'?'selected':''}>live</option></select>
-         <input id="sa-pay-currency" class="fc" placeholder="Currency (INR)" value="${escHtml(payCurrency)}" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
+         <input id="sa-pay-currency" class="fc" placeholder="Currency (INR only)" value="INR" readonly ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
          <input id="sa-pay-key-id" class="fc" placeholder="Gateway key id / publishable key" ${canPaymentSettings?'':'disabled aria-disabled="true" aria-describedby="sa-pay-settings-warning"'}>
@@ -1735,7 +1806,16 @@ async function renderSuperAdminSections(){
         <input id="sa-macro-name" class="fc" placeholder="Support macro name">
         <input id="sa-macro-body" class="fc" placeholder="Support macro body">
       </div>
-      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="createSupportMacroUi()">Save Support Macro</button>`;
+      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="createSupportMacroUi()">Save Support Macro</button>
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-size:12px;font-weight:800;margin-bottom:6px">📨 Send Notification (Web/App)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input id="sa-send-user-id" class="fc" placeholder="User ID (blank = me for testing)">
+          <input id="sa-send-title" class="fc" placeholder="Notification title">
+          <input id="sa-send-body" class="fc" style="grid-column:1/3" placeholder="Message body">
+        </div>
+        <button class="btn btn-br btn-sm" style="margin-top:8px" onclick="sendAdminNotificationUi()">Send Notification</button>
+      </div>`;
   }
   if(setEl){
     const [cfg,templates]=await Promise.all([loadAdminConfig(),loadAdminNotificationTemplates()]);
@@ -1810,6 +1890,20 @@ async function renderSuperAdminSections(){
       <div style="font-size:11px;color:var(--muted);margin-top:8px">Dual approvals: ${dual.length} · Secret rotations: ${secrets.length} · Roles in policy matrix: ${policy.length}</div>`;
   }
 }
+function renderSuperadminServerCharts(su={}){
+  const usageEl=document.getElementById('sa-server-usage-chart');
+  const loadEl=document.getElementById('sa-server-load-chart');
+  if(!usageEl||!loadEl||typeof Chart==='undefined')return;
+  if(window.__saServerUsageChart)window.__saServerUsageChart.destroy();
+  if(window.__saServerLoadChart)window.__saServerLoadChart.destroy();
+  const used=Number(su.memoryUsedMb||0);
+  const total=Math.max(Number(su.memoryTotalMb||0),used,1);
+  const free=Math.max(total-used,0);
+  window.__saServerUsageChart=new Chart(usageEl,{type:'doughnut',data:{labels:['Used MB','Free MB'],datasets:[{data:[used,free],backgroundColor:['#ef4444','#22c55e']}]} ,options:{plugins:{legend:{display:true}}}});
+  const loads=Array.isArray(su.loadAverage)?su.loadAverage.map(v=>Number(v)||0):[0,0,0];
+  window.__saServerLoadChart=new Chart(loadEl,{type:'bar',data:{labels:['Load 1m','Load 5m','Load 15m'],datasets:[{data:loads,backgroundColor:['#3b82f6','#60a5fa','#93c5fd'],borderRadius:6}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+}
+
 function toggleNp(){document.getElementById('np').classList.toggle('on');}
 async function pushNotification(title,body){
   const saved=await apiTry('/notifications',{method:'POST',body:JSON.stringify({title,body})},null);
@@ -2500,6 +2594,14 @@ ${D.vacancies.map(v=>`<div class="vac">
   </div>
 </div>`).join('')}`,
 
+notifications:()=>`
+<div class="card">
+  <div class="ch"><h3>📨 Notifications Inbox</h3><button class="btn btn-sm btn-gh" onclick="loadServerNotifications().then(()=>go('notifications'))">Refresh</button></div>
+  <div class="cb">
+    ${inboxNotifications.length?`<table><tr><th>Title</th><th>Message</th><th>Time</th></tr>${inboxNotifications.map(n=>`<tr><td>${escHtml(n.title)}</td><td>${escHtml(n.body)}</td><td>${new Date(n.created_at).toLocaleString()}</td></tr>`).join('')}</table>`:'<div style="font-size:12px;color:var(--muted)">No notifications yet.</div>'}
+  </div>
+</div>`,
+
 superadmin:()=>`
 <div class="tabs">
   <div class="tab on" onclick="swTab(this,'sa-overview')">📊 Overview</div>
@@ -2547,6 +2649,7 @@ superadmin:()=>`
         <div class="fg"><label>OCR Source MIME</label><input class="fc" id="ac-ocr-mime" placeholder="e.g. application/pdf"></div>
         <div class="fg" style="grid-column:1/3"><label>OCR Extracted Text</label><textarea class="fc" id="ac-ocr-text" style="min-height:80px"></textarea></div>
         <div class="fg" style="grid-column:1/3"><label>OCR Pages JSON</label><textarea class="fc" id="ac-ocr-pages" style="min-height:80px">[]</textarea></div>
+        <div class="fg" style="grid-column:1/3"><label>Syllabus Bulk Text (optional, chapter/topic lines)</label><textarea class="fc" id="ac-syllabus-bulk" style="min-height:90px" placeholder="Chapter: Algebra\n- Linear equations\n- Quadratic equations\nChapter: Geometry\n- Triangles"></textarea></div>
         <div class="fg" style="grid-column:1/3"><label>Metadata (JSON)</label><textarea class="fc" id="ac-data" style="min-height:80px">{}</textarea></div>
       </div>
       <button class="btn btn-br" onclick="createAdminContent()">Save Content</button>

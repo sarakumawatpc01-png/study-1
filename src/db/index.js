@@ -31,7 +31,7 @@ safeExec("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
 safeExec("ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0;");
 safeExec("ALTER TABLE users ADD COLUMN last_login_at TEXT;");
 safeExec("ALTER TABLE users ADD COLUMN package_name TEXT NOT NULL DEFAULT 'free';");
-safeExec("ALTER TABLE users ADD COLUMN platform_language TEXT NOT NULL DEFAULT 'Hinglish';");
+safeExec("ALTER TABLE users ADD COLUMN platform_language TEXT NOT NULL DEFAULT 'English';");
 safeExec("ALTER TABLE users ADD COLUMN test_language TEXT NOT NULL DEFAULT 'English';");
 
 safeExec("ALTER TABLE reports ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium';");
