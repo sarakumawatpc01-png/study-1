@@ -239,7 +239,7 @@ router.post('/panel/pdf-lab/ingest', async (req, res) => {
   }
 });
 
-router.post('/panel/content/:id/delete', requireElevatedAccess, requireDualApproval('delete_course'), (req, res) => {
+router.delete('/panel/content/:id', requireElevatedAccess, requireDualApproval('delete_course'), (req, res) => {
   const row = db.prepare('DELETE FROM content_library WHERE id = ?').run(req.params.id);
   if (!row.changes) return res.status(404).json({ error: 'Content not found' });
   audit(req, 'admin_course_delete', 'content', req.params.id, {});

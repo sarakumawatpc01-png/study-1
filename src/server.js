@@ -221,7 +221,6 @@ if (require.main === module) {
       process.exit(1);
     }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
     clearInterval(apiLogFlushTimer);
-    flushApiRequestLogs();
     server.close(() => {
       clearTimeout(forceClose);
       flushApiRequestLogs();

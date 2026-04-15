@@ -123,7 +123,7 @@ function buildAcademicProgress(mockTests, tasks) {
   });
   const taskStats = { pending: 0, completed: 0, skipped: 0, in_progress: 0, other: 0 };
   for (const task of tasks || []) {
-    const status = String(task.status || 'other').toLowerCase().replace('-', '_');
+    const status = String(task.status || 'other').toLowerCase().replace(/-/g, '_');
     if (status in taskStats) taskStats[status] += 1;
     else taskStats.other += 1;
   }

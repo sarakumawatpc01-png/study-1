@@ -27,7 +27,7 @@ function firstWeekTemplate(exam, dailyHours) {
   const key = String(exam || '').trim().toLowerCase();
   const topics = topicsByExam[key] || ['Core Concepts', 'Practice MCQs', 'Revision', 'Mock Drill'];
   const minutes = Math.max(30, Math.round(Number(dailyHours || 2) * 60));
-  const split = [Math.round(minutes * 0.4), Math.round(minutes * 0.4), Math.max(20, minutes - Math.round(minutes * 0.8))];
+  const split = [Math.round(minutes * 0.4), Math.round(minutes * 0.4), Math.max(20, Math.round(minutes * 0.2))];
   const plans = [];
   for (let day = 1; day <= 7; day += 1) {
     plans.push({
