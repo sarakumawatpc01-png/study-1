@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_active INTEGER NOT NULL DEFAULT 1,
   token_version INTEGER NOT NULL DEFAULT 0,
   mfa_enabled INTEGER NOT NULL DEFAULT 0,
+  onboarding_completed INTEGER NOT NULL DEFAULT 0,
   last_login_at TEXT,
   created_at TEXT NOT NULL
 );
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   user_id INTEGER PRIMARY KEY,
   mood TEXT DEFAULT 'Normal / Okay',
   readiness_score INTEGER DEFAULT 50,
+  onboarding_data_json TEXT NOT NULL DEFAULT '{}',
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
