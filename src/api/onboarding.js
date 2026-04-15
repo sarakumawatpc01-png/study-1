@@ -9,7 +9,7 @@ router.use(authRequired);
 const onboardingSchema = z.object({
   target_exam: z.string().min(2).max(120),
   target_score: z.number().int().min(1).max(1000),
-  daily_study_goal_hours: z.number().min(0.5).max(16),
+  daily_study_hours: z.number().min(0.5).max(16),
   preparation_level: z.enum(['Beginner', 'Intermediate', 'Advanced']),
   initial_mood_assessment: z.string().min(2).max(120),
 });
@@ -42,9 +42,9 @@ function firstWeekTemplate(exam, dailyHours) {
   return plans;
 }
 
-function insertOnboardingPlanTasks(userId, exam, dailyHours) {
+function insertOnboardingPlanTasks(userId, exam, dailyStudyHours) {
   const now = nowIso();
-  const plans = firstWeekTemplate(exam, dailyHours);
+  const plans = firstWeekTemplate(exam, dailyStudyHours);
   const upsert = db.prepare(
     'INSERT OR REPLACE INTO tasks (user_id, task_id, title, topic, status, suggested_time, actual_time, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)'
   );
@@ -91,7 +91,7 @@ router.post('/complete', (req, res) => {
 
   const payload = parsed.data;
   const now = nowIso();
-  const taskCount = db.transaction(() => {
+  const createdTaskCount = db.transaction(() => {
     db.prepare('UPDATE users SET exam = ?, onboarding_completed = 1 WHERE id = ?')
       .run(payload.target_exam, req.user.id);
     db.prepare(
@@ -104,10 +104,10 @@ router.post('/complete', (req, res) => {
       50,
       JSON.stringify({ ...payload, completed_at: now })
     );
-    return insertOnboardingPlanTasks(req.user.id, payload.target_exam, payload.daily_study_goal_hours);
+    return insertOnboardingPlanTasks(req.user.id, payload.target_exam, payload.daily_study_hours);
   })();
 
-  return res.json({ ok: true, onboarding_completed: true, tasks_created: taskCount });
+  return res.json({ ok: true, onboarding_completed: true, tasks_created: createdTaskCount });
 });
 
 module.exports = router;

@@ -357,7 +357,7 @@ tr:hover td{background:#fafbfc;}
       <div class="eo" onclick="pickEx(this,'State PSC')"><div class="ei">📌</div><div class="en">State PSC</div><div class="es">State Level</div></div>
     </div>
     <div class="tgrid">
-      <div><div class="ob-lbl">Target score</div><input id="ob-target-score" type="number" class="ob-in" style="margin:0" value="72"></div>
+      <div><label class="ob-lbl" for="ob-target-score">Target score</label><input id="ob-target-score" type="number" min="1" max="1000" required class="ob-in" value="72"></div>
       <div><div class="ob-lbl">Attempt number</div><select class="ob-in" style="margin:0"><option>Pehla attempt</option><option selected>Doosra attempt</option><option>3rd ya zyada</option></select></div>
       <div><div class="ob-lbl">Exam date (approx)</div><input type="date" class="ob-in" style="margin:0" value="2026-10-12"></div>
     </div>
@@ -372,10 +372,10 @@ tr:hover td{background:#fafbfc;}
       <div><div class="ob-lbl">Uthne ka time</div><select class="ob-in" style="margin:0"><option>5:00 AM</option><option>6:00 AM</option><option selected>6:30 AM</option><option>7:00 AM</option><option>8:00 AM</option></select></div>
       <div><div class="ob-lbl">Sone ka time</div><select class="ob-in" style="margin:0"><option>10:00 PM</option><option selected>11:00 PM</option><option>12:00 AM</option></select></div>
     </div>
-    <div class="ob-lbl">Current preparation level</div>
+    <label class="ob-lbl" for="ob-prep-level">Current preparation level</label>
     <select id="ob-prep-level" class="ob-in"><option>Beginner</option><option selected>Intermediate</option><option>Advanced</option></select>
-    <div class="ob-lbl">Daily padhai hours (realistic!)</div>
-    <select id="ob-daily-hours" class="ob-in"><option value="1.5">1-2 ghante</option><option value="3.5" selected>3-4 ghante</option><option value="5.5">5-6 ghante</option><option value="7">7+ ghante</option></select>
+    <label class="ob-lbl" id="ob-daily-hours-label" for="ob-daily-hours">Daily padhai hours (realistic!)</label>
+    <select id="ob-daily-hours" class="ob-in" aria-labelledby="ob-daily-hours-label" required><option value="1.5">1-2 ghante</option><option value="3.5" selected>3-4 ghante</option><option value="5.5">5-6 ghante</option><option value="7">7+ ghante</option></select>
     <div class="ob-lbl">Best study time (multiple select)</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Morning (6-10 AM)</label>
@@ -476,7 +476,7 @@ tr:hover td{background:#fafbfc;}
         <div style="color:rgba(255,255,255,.5)">🌙 8:00-8:30 PM — English: Synonyms Practice</div>
       </div>
       <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:8px">✅ Personalized kyunki: Algebra weak hai (38%) · Morning best time · CGL mein 8-12 qs</div>
-      <div class="ob-lbl" style="text-align:left">Initial mood assessment</div>
+      <label class="ob-lbl" for="ob-initial-mood" style="text-align:left">Initial mood assessment</label>
       <select id="ob-initial-mood" class="ob-in" style="margin-bottom:12px"><option>Calm & Focused</option><option selected>Normal / Okay</option><option>Stressed</option><option>Very Stressed</option></select>
     </div>
     <div style="display:flex;gap:8px">
@@ -999,7 +999,7 @@ async function completeOnboardingAndLaunch(){
     const payload={
       target_exam:onboardingSelectedExam||'SSC CGL',
       target_score:Math.max(1,parseInt(document.getElementById('ob-target-score')?.value||'72',10)),
-      daily_study_goal_hours:Math.max(0.5,Number(document.getElementById('ob-daily-hours')?.value||3.5)),
+      daily_study_hours:Math.max(0.5,Number(document.getElementById('ob-daily-hours')?.value||3.5)),
       preparation_level:String(document.getElementById('ob-prep-level')?.value||'Intermediate'),
       initial_mood_assessment:String(document.getElementById('ob-initial-mood')?.value||'Normal / Okay'),
     };

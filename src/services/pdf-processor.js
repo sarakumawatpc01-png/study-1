@@ -37,6 +37,14 @@ function parseOptions(block) {
   return options;
 }
 
+function extractPageCount(result) {
+  if (!result || typeof result !== 'object') return 0;
+  if (Number.isFinite(Number(result.total))) return Number(result.total);
+  if (Number.isFinite(Number(result.numpages))) return Number(result.numpages);
+  if (Array.isArray(result.pages)) return result.pages.length;
+  return 0;
+}
+
 function parseQuestionsFromText(text) {
   const raw = normalizeWhitespace(text);
   const answerKeys = parseAnswerKeys(raw);
@@ -81,7 +89,7 @@ async function extractTextFromPdfBuffer(fileBuffer) {
     return {
       text: normalizeWhitespace(result.text || ''),
       metadata: result.info || result.meta || {},
-      num_pages: Number(result.total || result.numpages || (Array.isArray(result.pages) ? result.pages.length : 0) || 0),
+      num_pages: extractPageCount(result),
     };
   }
   const PDFParse = pdfParseLib?.PDFParse;
@@ -92,7 +100,7 @@ async function extractTextFromPdfBuffer(fileBuffer) {
   return {
     text: normalizeWhitespace(result.text || ''),
     metadata: result.info || result.meta || {},
-    num_pages: Number(result.total || result.numpages || (Array.isArray(result.pages) ? result.pages.length : 0) || 0),
+    num_pages: extractPageCount(result),
   };
 }
 

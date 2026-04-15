@@ -84,9 +84,16 @@ router.patch('/panel/users/:id/access', (req, res) => {
   const schema = z.object({
     package_name: z.enum(['free', 'premium']).optional(),
     is_active: z.boolean().optional(),
+  }).refine((data) => data.package_name !== undefined || data.is_active !== undefined, {
+    message: 'At least one field is required',
   });
   const parsed = schema.safeParse(req.body || {});
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' });
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: parsed.error.issues,
+    });
+  }
   const fields = [];
   const values = [];
   if (parsed.data.package_name) {
@@ -97,7 +104,6 @@ router.patch('/panel/users/:id/access', (req, res) => {
     fields.push('is_active = ?');
     values.push(parsed.data.is_active ? 1 : 0);
   }
-  if (!fields.length) return res.status(400).json({ error: 'No changes provided' });
   values.push(Number(req.params.id));
   const result = db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
   if (!result.changes) return res.status(404).json({ error: 'User not found' });
