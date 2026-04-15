@@ -373,9 +373,9 @@ tr:hover td{background:#fafbfc;}
       <div><div class="ob-lbl">Sone ka time</div><select class="ob-in" style="margin:0"><option>10:00 PM</option><option selected>11:00 PM</option><option>12:00 AM</option></select></div>
     </div>
     <label class="ob-lbl" for="ob-prep-level">Current preparation level</label>
-    <select id="ob-prep-level" class="ob-in"><option>Beginner</option><option selected>Intermediate</option><option>Advanced</option></select>
-    <label class="ob-lbl" id="ob-daily-hours-label" for="ob-daily-hours">Daily padhai hours (realistic!)</label>
-    <select id="ob-daily-hours" class="ob-in" aria-labelledby="ob-daily-hours-label" required><option value="1.5">1-2 ghante</option><option value="3.5" selected>3-4 ghante</option><option value="5.5">5-6 ghante</option><option value="7">7+ ghante</option></select>
+    <select id="ob-prep-level" class="ob-in" required><option>Beginner</option><option selected>Intermediate</option><option>Advanced</option></select>
+    <label class="ob-lbl" for="ob-daily-hours">Daily padhai hours (realistic!)</label>
+    <select id="ob-daily-hours" class="ob-in" required><option value="1.5">1-2 ghante</option><option value="3.5" selected>3-4 ghante</option><option value="5.5">5-6 ghante</option><option value="7">7+ ghante</option></select>
     <div class="ob-lbl">Best study time (multiple select)</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Morning (6-10 AM)</label>
@@ -477,7 +477,7 @@ tr:hover td{background:#fafbfc;}
       </div>
       <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:8px">✅ Personalized kyunki: Algebra weak hai (38%) · Morning best time · CGL mein 8-12 qs</div>
       <label class="ob-lbl" for="ob-initial-mood" style="text-align:left">Initial mood assessment</label>
-      <select id="ob-initial-mood" class="ob-in" style="margin-bottom:12px"><option>Calm & Focused</option><option selected>Normal / Okay</option><option>Stressed</option><option>Very Stressed</option></select>
+      <select id="ob-initial-mood" class="ob-in" style="margin-bottom:12px" required><option>Calm & Focused</option><option selected>Normal / Okay</option><option>Stressed</option><option>Very Stressed</option></select>
     </div>
     <div style="display:flex;gap:8px">
       <button class="ob-btn" style="flex:1;margin-top:0" onclick="completeOnboardingAndLaunch()">🚀 Start Free Trial</button>
@@ -793,7 +793,7 @@ async function submitPathLogin(mode){
     const me=await apiFetch('/auth/me');
     currentUser=me;
     syncUserProfilePrefs(me);
-    if(mode==='admin'&&String(me.role||'').toLowerCase()!=='superadmin')throw new Error('Only superadmin accounts can access /admin.');
+    if(mode==='admin'&&String(me.role||'').toLowerCase()!=='superadmin')throw new Error('Only superadmin accounts can access the superadmin panel.');
     hideAuthGate();
     document.getElementById('ob').classList.add('hidden');
     document.getElementById('app').classList.add('on');

@@ -93,7 +93,7 @@ async function extractTextFromPdfBuffer(fileBuffer) {
     };
   }
   const PDFParse = pdfParseLib?.PDFParse;
-  if (!PDFParse) throw new Error('pdf-parse parser not available');
+  if (!PDFParse) throw new Error('PDF parser implementation is unavailable for this pdf-parse export shape.');
   const parser = new PDFParse({ data: fileBuffer });
   const result = await parser.getText();
   if (typeof parser.destroy === 'function') await parser.destroy().catch(() => {});

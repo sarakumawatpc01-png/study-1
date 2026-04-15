@@ -273,12 +273,54 @@ async function run() {
     ttl_minutes: 10,
   }, adminToken);
   if (elevated.status !== 201 || !elevated.body.token) throw new Error('Elevated access request failed');
-  const elevatedToken = elevated.body.token;
+  const disableElevatedToken = elevated.body.token;
 
   const disableUser = await req('POST', `/api/admin/users/${signup.body.user.id}/disable`, {}, adminToken, {
-    'x-elevated-token': elevatedToken,
+    'x-elevated-token': disableElevatedToken,
   });
   if (disableUser.status !== 200) throw new Error('Disable user failed');
+
+  const deleteWithoutApprovalElevated = await req('POST', '/api/admin/security/elevated-access', {
+    reason: 'Delete content without approval should fail',
+    ttl_minutes: 10,
+  }, adminToken);
+  if (deleteWithoutApprovalElevated.status !== 201 || !deleteWithoutApprovalElevated.body.token) {
+    throw new Error('Elevated token for delete-without-approval failed');
+  }
+  const deleteWithoutApproval = await req('DELETE', `/api/superadmin/panel/content/${contentCreate.body.id}`, null, adminToken, {
+    'x-elevated-token': deleteWithoutApprovalElevated.body.token,
+  });
+  if (deleteWithoutApproval.status !== 403) throw new Error('Content delete should require dual approval');
+
+  const approvedDelete = db.prepare(
+    'INSERT INTO dual_approval_requests (action, payload_json, created_by, approvals_json, status, created_at, approved_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    'delete_course',
+    JSON.stringify({ content_id: contentCreate.body.id }),
+    adminInsert.lastInsertRowid,
+    JSON.stringify([{ user_id: adminInsert.lastInsertRowid, approved_at: new Date().toISOString() }]),
+    'approved',
+    new Date().toISOString(),
+    new Date().toISOString()
+  );
+
+  const deleteWithoutElevated = await req('DELETE', `/api/superadmin/panel/content/${contentCreate.body.id}`, null, adminToken, {
+    'x-dual-approval-id': String(approvedDelete.lastInsertRowid),
+  });
+  if (deleteWithoutElevated.status !== 403) throw new Error('Content delete should require elevated access token');
+
+  const deleteWithApprovalElevated = await req('POST', '/api/admin/security/elevated-access', {
+    reason: 'Delete content with dual approval',
+    ttl_minutes: 10,
+  }, adminToken);
+  if (deleteWithApprovalElevated.status !== 201 || !deleteWithApprovalElevated.body.token) {
+    throw new Error('Elevated token for approved delete failed');
+  }
+  const deleteApproved = await req('DELETE', `/api/superadmin/panel/content/${contentCreate.body.id}`, null, adminToken, {
+    'x-elevated-token': deleteWithApprovalElevated.body.token,
+    'x-dual-approval-id': String(approvedDelete.lastInsertRowid),
+  });
+  if (deleteApproved.status !== 200) throw new Error('Approved content delete failed');
 
   const loginDisabled = await req('POST', '/api/auth/login', {
     email: testEmail,
@@ -308,6 +350,7 @@ async function run() {
     db.prepare('DELETE FROM config_history WHERE config_key = ?').run('ai.mistral_ocr');
     db.prepare("DELETE FROM config_settings WHERE config_key IN ('ai.provider.sarvam','ai.provider.openrouter','ai.provider.deepseek')").run();
     db.prepare("DELETE FROM config_history WHERE config_key IN ('ai.provider.sarvam','ai.provider.openrouter','ai.provider.deepseek')").run();
+    db.prepare('DELETE FROM dual_approval_requests WHERE action = ? AND created_by = ?').run('delete_course', adminInsert.lastInsertRowid);
   });
   cleanup();
 

@@ -84,7 +84,7 @@ function buildUsageSessions(apiLogs, gapMinutes = 30) {
   sessions.push(current);
   return sessions.map((s) => ({
     ...s,
-    duration_minutes: Math.max(1, Math.round((s.end_ms - s.start_ms) / 60000)),
+    duration_minutes: Number(Math.max(0, (s.end_ms - s.start_ms) / 60000).toFixed(2)),
     start_at: new Date(s.start_ms).toISOString(),
     end_at: new Date(s.end_ms).toISOString(),
   }));

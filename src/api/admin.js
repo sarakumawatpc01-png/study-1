@@ -11,7 +11,7 @@ router.use(authRequired);
 
 function requireSuperadmin(req, res, next) {
   if (String(req.user?.role || '').toLowerCase() !== 'superadmin') {
-    return res.status(403).json({ error: 'Superadmin access required' });
+    return res.status(403).json({ error: 'Access denied. This endpoint requires superadmin privileges.' });
   }
   return next();
 }
