@@ -1,4 +1,4 @@
-const { PDFParse } = require('pdf-parse');
+const pdfParseLib = require('pdf-parse');
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\r/g, '').trim();
@@ -76,17 +76,24 @@ function parseQuestionsFromText(text) {
 }
 
 async function extractTextFromPdfBuffer(fileBuffer) {
-  const parser = new PDFParse({ data: fileBuffer });
-  try {
-    const result = await parser.getText();
+  if (typeof pdfParseLib === 'function') {
+    const result = await pdfParseLib(fileBuffer);
     return {
       text: normalizeWhitespace(result.text || ''),
       metadata: result.info || result.meta || {},
       num_pages: Number(result.total || result.numpages || (Array.isArray(result.pages) ? result.pages.length : 0) || 0),
     };
-  } finally {
-    if (typeof parser.destroy === 'function') await parser.destroy().catch(() => {});
   }
+  const PDFParse = pdfParseLib?.PDFParse;
+  if (!PDFParse) throw new Error('pdf-parse parser not available');
+  const parser = new PDFParse({ data: fileBuffer });
+  const result = await parser.getText();
+  if (typeof parser.destroy === 'function') await parser.destroy().catch(() => {});
+  return {
+    text: normalizeWhitespace(result.text || ''),
+    metadata: result.info || result.meta || {},
+    num_pages: Number(result.total || result.numpages || (Array.isArray(result.pages) ? result.pages.length : 0) || 0),
+  };
 }
 
 function buildFallbackStructuredPayload(rawText) {
