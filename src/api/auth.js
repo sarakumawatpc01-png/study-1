@@ -190,7 +190,7 @@ router.post('/signup', authLimiter, async (req, res) => {
   const tx = db.transaction(() => {
     const result = db
       .prepare(
-        'INSERT INTO users (email, password_hash, name, exam, platform_language, test_language, role, is_active, token_version, mfa_enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?)'
+        'INSERT INTO users (email, password_hash, name, exam, platform_language, test_language, role, is_active, token_version, mfa_enabled, onboarding_completed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)'
       )
       .run(email, passwordHash, name, exam, DEFAULT_PLATFORM_LANGUAGE, DEFAULT_TEST_LANGUAGE, 'student', createdAt);
     db.prepare('INSERT INTO profiles (user_id, mood, readiness_score) VALUES (?, ?, ?)')
@@ -224,7 +224,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 
   const user = db
-    .prepare('SELECT id, email, name, exam, role, package_name, platform_language, test_language, password_hash, token_version, is_active FROM users WHERE email = ?')
+    .prepare('SELECT id, email, name, exam, role, package_name, platform_language, test_language, onboarding_completed, password_hash, token_version, is_active FROM users WHERE email = ?')
     .get(email);
   if (!user) {
     const updated = registerFailure(req, email);
@@ -277,6 +277,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       name: user.name,
       exam: user.exam,
       role: user.role,
+      onboarding_completed: Number(user.onboarding_completed) === 1,
       package_name: user.package_name || 'free',
       platform_language: user.platform_language || DEFAULT_PLATFORM_LANGUAGE,
       test_language: user.test_language || DEFAULT_TEST_LANGUAGE,
@@ -298,7 +299,7 @@ router.post('/verify-2fa', loginLimiter, async (req, res) => {
   if (String(code).trim() !== challenge.code) return res.status(401).json({ error: 'Invalid verification code' });
 
   const user = db.prepare(
-    'SELECT id, email, name, exam, role, package_name, platform_language, test_language, token_version, is_active FROM users WHERE id = ?'
+    'SELECT id, email, name, exam, role, package_name, platform_language, test_language, onboarding_completed, token_version, is_active FROM users WHERE id = ?'
   ).get(challenge.userId);
   twoFactorChallenges.delete(token);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -315,6 +316,7 @@ router.post('/verify-2fa', loginLimiter, async (req, res) => {
       name: user.name,
       exam: user.exam,
       role: user.role,
+      onboarding_completed: Number(user.onboarding_completed) === 1,
       package_name: user.package_name || 'free',
       platform_language: user.platform_language || DEFAULT_PLATFORM_LANGUAGE,
       test_language: user.test_language || DEFAULT_TEST_LANGUAGE,
@@ -338,7 +340,7 @@ setInterval(() => {
 router.get('/me', authRequired, (req, res) => {
   const user = db
     .prepare(
-      'SELECT u.id, u.email, u.name, u.exam, u.role, u.package_name, u.platform_language, u.test_language, p.mood, p.readiness_score AS readinessScore FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.id = ?'
+      'SELECT u.id, u.email, u.name, u.exam, u.role, u.package_name, u.platform_language, u.test_language, u.onboarding_completed, p.mood, p.readiness_score AS readinessScore FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.id = ?'
     )
     .get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });

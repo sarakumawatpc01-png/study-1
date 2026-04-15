@@ -356,9 +356,8 @@ tr:hover td{background:#fafbfc;}
       <div class="eo" onclick="pickEx(this,'SSC CPO')"><div class="ei">🚔</div><div class="en">SSC CPO</div><div class="es">SI/ASI</div></div>
       <div class="eo" onclick="pickEx(this,'State PSC')"><div class="ei">📌</div><div class="en">State PSC</div><div class="es">State Level</div></div>
     </div>
-    <input class="ob-in" placeholder="Aapka naam" value="Rahul Kumar">
-    <input class="ob-in" placeholder="+91 Mobile Number" value="9876543210">
     <div class="tgrid">
+      <div><label class="ob-lbl" for="ob-target-score">Target score</label><input id="ob-target-score" type="number" min="1" max="1000" required class="ob-in" value="72"></div>
       <div><div class="ob-lbl">Attempt number</div><select class="ob-in" style="margin:0"><option>Pehla attempt</option><option selected>Doosra attempt</option><option>3rd ya zyada</option></select></div>
       <div><div class="ob-lbl">Exam date (approx)</div><input type="date" class="ob-in" style="margin:0" value="2026-10-12"></div>
     </div>
@@ -373,10 +372,10 @@ tr:hover td{background:#fafbfc;}
       <div><div class="ob-lbl">Uthne ka time</div><select class="ob-in" style="margin:0"><option>5:00 AM</option><option>6:00 AM</option><option selected>6:30 AM</option><option>7:00 AM</option><option>8:00 AM</option></select></div>
       <div><div class="ob-lbl">Sone ka time</div><select class="ob-in" style="margin:0"><option>10:00 PM</option><option selected>11:00 PM</option><option>12:00 AM</option></select></div>
     </div>
-    <div class="ob-lbl">Employment status</div>
-    <select class="ob-in"><option selected>Full-time student</option><option>Working professional</option><option>Part-time (college)</option></select>
-    <div class="ob-lbl">Daily padhai hours (realistic!)</div>
-    <select class="ob-in"><option>1-2 ghante</option><option selected>3-4 ghante</option><option>5-6 ghante</option><option>7+ ghante</option></select>
+    <label class="ob-lbl" for="ob-prep-level">Current preparation level</label>
+    <select id="ob-prep-level" class="ob-in" required><option>Beginner</option><option selected>Intermediate</option><option>Advanced</option></select>
+    <label class="ob-lbl" for="ob-daily-hours">Daily padhai hours (realistic!)</label>
+    <select id="ob-daily-hours" class="ob-in" required><option value="1.5">1-2 ghante</option><option value="3.5" selected>3-4 ghante</option><option value="5.5">5-6 ghante</option><option value="7">7+ ghante</option></select>
     <div class="ob-lbl">Best study time (multiple select)</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer"><input type="checkbox" checked style="accent-color:var(--accent)"> Morning (6-10 AM)</label>
@@ -476,11 +475,13 @@ tr:hover td{background:#fafbfc;}
         <div style="color:rgba(255,255,255,.5);margin-bottom:3px">🧠 7:15-7:30 AM — Micro-quiz: 3 questions to validate</div>
         <div style="color:rgba(255,255,255,.5)">🌙 8:00-8:30 PM — English: Synonyms Practice</div>
       </div>
-      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px">✅ Personalized kyunki: Algebra weak hai (38%) · Morning best time · CGL mein 8-12 qs</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:8px">✅ Personalized kyunki: Algebra weak hai (38%) · Morning best time · CGL mein 8-12 qs</div>
+      <label class="ob-lbl" for="ob-initial-mood" style="text-align:left">Initial mood assessment</label>
+      <select id="ob-initial-mood" class="ob-in" style="margin-bottom:12px" required><option>Calm & Focused</option><option selected>Normal / Okay</option><option>Stressed</option><option>Very Stressed</option></select>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="ob-btn" style="flex:1;margin-top:0" onclick="launch()">🚀 Start Free Trial</button>
-      <button class="ob-btn" style="flex:0.6;margin-top:0;background:rgba(255,255,255,.1);color:#fff" onclick="launch()">Upgrade ₹99</button>
+      <button class="ob-btn" style="flex:1;margin-top:0" onclick="completeOnboardingAndLaunch()">🚀 Start Free Trial</button>
+      <button class="ob-btn" style="flex:0.6;margin-top:0;background:rgba(255,255,255,.1);color:#fff" onclick="completeOnboardingAndLaunch()">Upgrade ₹99</button>
     </div>
     <div style="font-size:10px;color:rgba(255,255,255,.3);text-align:center;margin-top:6px">7-day outcome guarantee · No auto-renewal · Feel clearer or full refund</div>
   </div>
@@ -661,6 +662,7 @@ let currentUser=null;
 let serverAnalytics=null;
 let inboxNotifications=[];
 let securityPromptResolver=null;
+let onboardingSelectedExam='SSC CGL';
 const normalizedPath=((String(location.pathname||'').replace(/\/+$/,'')||'/').toLowerCase());
 const MAX_CAPTCHA_PROMPT_ATTEMPTS=8;
 const FOCUS_STATE_KEY='exambhai_active_task_v1';
@@ -770,6 +772,12 @@ function syncUserProfilePrefs(user){
 function hideAuthGate(){
   document.getElementById('auth-gate')?.classList.add('hidden');
 }
+function showOnboardingScreen(){
+  hideAuthGate();
+  document.getElementById('ob').classList.remove('hidden');
+  document.getElementById('app').classList.remove('on');
+  obGo(1);
+}
 function showAuthError(msg){
   const el=document.getElementById('auth-error');
   if(el)el.textContent=msg||'Login failed';
@@ -785,7 +793,7 @@ async function submitPathLogin(mode){
     const me=await apiFetch('/auth/me');
     currentUser=me;
     syncUserProfilePrefs(me);
-    if(mode==='admin'&&!['admin','superadmin'].includes(String(me.role||'').toLowerCase()))throw new Error('This account does not have admin access.');
+    if(mode==='admin'&&String(me.role||'').toLowerCase()!=='superadmin')throw new Error('Only superadmin accounts can access the superadmin panel.');
     hideAuthGate();
     document.getElementById('ob').classList.add('hidden');
     document.getElementById('app').classList.add('on');
@@ -815,7 +823,7 @@ function renderPathLogin(mode){
       <label class="auth-lbl">Password</label>
       <input id="auth-password" class="auth-input" type="password" placeholder="Enter password">
       <button class="ob-btn" onclick="submitPathLogin('${mode}')">${mode==='admin'?'Login to Superadmin':'Login'}</button>
-      <div class="auth-note">${mode==='admin'?'Only admin/superadmin roles can continue after authentication.':'Need admin? visit /admin.'}</div>
+      <div class="auth-note">${mode==='admin'?'Only superadmin roles can continue after authentication.':'Need admin? visit /admin.'}</div>
     </div>`;
   const passEl=document.getElementById('auth-password');
   if(passEl){
@@ -981,12 +989,33 @@ function getTaskAnalytics(windowDays=7){
 }
 
 /* ═══════ ONBOARDING ═══════ */
-function pickEx(el,n){document.querySelectorAll('.eo').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');}
+function pickEx(el,n){document.querySelectorAll('.eo').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');onboardingSelectedExam=n;}
 function obGo(n){document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('on'));document.getElementById('os'+n).classList.add('on');}
 function selA(g){document.querySelectorAll(`input[data-g="${g}"]`).forEach(cb=>{cb.checked=true;cb.closest('.ti').classList.add('ck');});}
 document.querySelectorAll('.ti input').forEach(cb=>{cb.addEventListener('change',function(){this.closest('.ti').classList.toggle('ck',this.checked);});});
+async function completeOnboardingAndLaunch(){
+  try{
+    await ensureAuth();
+    const payload={
+      target_exam:onboardingSelectedExam||'SSC CGL',
+      target_score:Math.max(1,parseInt(document.getElementById('ob-target-score')?.value||'72',10)),
+      daily_study_hours:Math.max(0.5,Number(document.getElementById('ob-daily-hours')?.value||3.5)),
+      preparation_level:String(document.getElementById('ob-prep-level')?.value||'Intermediate'),
+      initial_mood_assessment:String(document.getElementById('ob-initial-mood')?.value||'Normal / Okay'),
+    };
+    await apiFetch('/onboarding/complete',{method:'POST',body:JSON.stringify(payload)});
+    await launch();
+  }catch(e){
+    showModal('errorMsg',e.message||'Failed to complete onboarding');
+  }
+}
 async function launch(){
   await ensureAuth();
+  const onboarding=await apiTry('/onboarding/status',{},null);
+  if(String(currentUser?.role||'student').toLowerCase()==='student'&&onboarding&&!onboarding.onboarding_completed){
+    showOnboardingScreen();
+    return;
+  }
   hideAuthGate();
   renderAdminNav();
   loadTasks();
@@ -3248,24 +3277,34 @@ function renderAdminNav(){
   }
 }
 async function initPathEntry(){
-  if(!['/login','/admin'].includes(normalizedPath))return;
+  if(!['/login','/admin','/onboarding'].includes(normalizedPath))return;
   if(authToken){
     try{
       currentUser=await apiFetch('/auth/me');
       syncUserProfilePrefs(currentUser);
+      if(normalizedPath==='/onboarding'){
+        showOnboardingScreen();
+        return;
+      }
+      const onboarding=await apiTry('/onboarding/status',{},null);
+      if(String(currentUser?.role||'student').toLowerCase()==='student'&&onboarding&&!onboarding.onboarding_completed){
+        showOnboardingScreen();
+        return;
+      }
       hideAuthGate();
       document.getElementById('ob').classList.add('hidden');
       document.getElementById('app').classList.add('on');
       renderAdminNav();
       loadTasks();
       await hydrateFromServer();
-      if(normalizedPath==='/admin'&&['admin','superadmin'].includes(String(currentUser?.role||'').toLowerCase()))go('superadmin');
+      if(normalizedPath==='/admin'&&String(currentUser?.role||'').toLowerCase()==='superadmin')go('superadmin');
       else go('home');
       return;
     }catch(_e){}
   }
   if(normalizedPath==='/login')renderPathLogin('user');
   else if(normalizedPath==='/admin')renderPathLogin('admin');
+  else if(normalizedPath==='/onboarding')renderPathLogin('user');
 }
 initPathEntry();
 setTimeout(renderAdminNav,0);

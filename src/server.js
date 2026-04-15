@@ -12,6 +12,8 @@ const tasksApi = require('./api/tasks');
 const analyticsApi = require('./api/analytics');
 const profileApi = require('./api/profile');
 const miscApi = require('./api/misc');
+const onboardingApi = require('./api/onboarding');
+const adminApi = require('./api/admin');
 
 const RELEASE_CACHE_TTL_MS = 3000;
 const releaseControlCache = {
@@ -19,6 +21,29 @@ const releaseControlCache = {
   maintenanceMode: false,
   killSwitch: false,
 };
+
+const API_LOG_FLUSH_INTERVAL_MS = 60 * 1000;
+const apiLogBuffer = [];
+const insertApiLogStmt = db.prepare(
+  'INSERT INTO api_request_logs (user_id, method, endpoint, status_code, latency_ms, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+);
+const flushApiLogsTx = db.transaction((rows) => {
+  for (const row of rows) {
+    insertApiLogStmt.run(row.user_id, row.method, row.endpoint, row.status_code, row.latency_ms, row.source, row.created_at);
+  }
+});
+
+function flushApiRequestLogs() {
+  if (!apiLogBuffer.length) return;
+  const snapshot = apiLogBuffer.splice(0, apiLogBuffer.length);
+  try {
+    flushApiLogsTx(snapshot);
+  } catch (_err) {
+    // no-op
+  }
+}
+const apiLogFlushTimer = setInterval(flushApiRequestLogs, API_LOG_FLUSH_INTERVAL_MS);
+apiLogFlushTimer.unref();
 
 function getReleaseControls() {
   const now = Date.now();
@@ -125,9 +150,15 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     try {
       if (controls.killSwitch) return;
-      db.prepare(
-        'INSERT INTO api_request_logs (user_id, method, endpoint, status_code, latency_ms, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).run(req.user?.id || null, req.method, req.path, res.statusCode, Date.now() - started, 'app', new Date().toISOString());
+      apiLogBuffer.push({
+        user_id: req.user?.id || null,
+        method: req.method,
+        endpoint: req.path,
+        status_code: res.statusCode,
+        latency_ms: Date.now() - started,
+        source: 'app',
+        created_at: new Date().toISOString(),
+      });
     } catch (_err) {
       // no-op
     }
@@ -161,6 +192,8 @@ app.use('/api/auth', authApi);
 app.use('/api/tasks', tasksApi);
 app.use('/api/analytics', analyticsApi);
 app.use('/api/profile', profileApi);
+app.use('/api/onboarding', onboardingApi);
+app.use('/api/superadmin', adminApi);
 app.use('/api', miscApi);
 
 app.use(express.static(path.join(process.cwd(), 'public')));
@@ -187,8 +220,10 @@ if (require.main === module) {
       console.error('Force exiting after shutdown timeout');
       process.exit(1);
     }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+    clearInterval(apiLogFlushTimer);
     server.close(() => {
       clearTimeout(forceClose);
+      flushApiRequestLogs();
       process.exit(0);
     });
   }
