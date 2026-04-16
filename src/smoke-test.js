@@ -1,9 +1,11 @@
 const http = require('http');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'smoke-test-secret';
 process.env.AUDIT_SIGNING_SECRET = process.env.AUDIT_SIGNING_SECRET || 'smoke-test-audit-secret';
 process.env.PAYMENT_CONFIG_ENCRYPTION_KEY = process.env.PAYMENT_CONFIG_ENCRYPTION_KEY || 'smoke-test-payment-key';
+process.env.CORS_ALLOWED_ORIGINS = process.env.CORS_ALLOWED_ORIGINS || 'https://study-smoke.example.com/';
 process.env.DATA_ROOT_DIR = process.env.DATA_ROOT_DIR || `/tmp/study-smoke-${process.pid}`;
 const app = require('./server');
 const db = require('./db');
@@ -67,6 +69,8 @@ async function run() {
     password: 'StrongPass123',
     name: 'Rahul',
     exam: 'SSC CGL',
+  }, null, {
+    origin: 'https://study-smoke.example.com',
   });
   if (signup.status !== 201 || !signup.body.token) throw new Error('Signup failed');
 

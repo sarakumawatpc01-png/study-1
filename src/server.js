@@ -76,8 +76,18 @@ if (isProduction) {
 function parseAllowlist(raw) {
   return String(raw || '')
     .split(',')
-    .map((v) => v.trim())
+    .map((v) => normalizeOrigin(v))
     .filter(Boolean);
+}
+
+function normalizeOrigin(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  try {
+    return new URL(trimmed).origin;
+  } catch (_err) {
+    return trimmed.replace(/\/+$/, '');
+  }
 }
 
 function parseTrustProxy(raw) {
@@ -95,7 +105,7 @@ if (isProduction && corsAllowedOrigins.length === 0) {
   throw new Error('CORS_ALLOWED_ORIGINS is required in production and must include one or more origins.');
 }
 function isAllowedCorsOrigin(origin) {
-  return !origin || !isProduction || corsAllowedOrigins.includes(origin);
+  return !origin || !isProduction || corsAllowedOrigins.includes(normalizeOrigin(origin));
 }
 
 const app = express();
