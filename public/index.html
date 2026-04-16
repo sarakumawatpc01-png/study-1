@@ -783,14 +783,36 @@ function showAuthError(msg){
   if(el)el.textContent=msg||'Login failed';
   el?.classList.remove('hidden');
 }
+function setUserAuthMode(nextMode){
+  const mode=nextMode==='signup'?'signup':'login';
+  const modeInput=document.getElementById('auth-user-mode');
+  if(modeInput)modeInput.value=mode;
+  const signupFields=document.getElementById('auth-user-signup-fields');
+  signupFields?.classList.toggle('hidden',mode!=='signup');
+  const submitBtn=document.getElementById('auth-submit-btn');
+  if(submitBtn)submitBtn.textContent=mode==='signup'?'Create Account':'Login';
+  const toggleBtn=document.getElementById('auth-toggle-btn');
+  if(toggleBtn)toggleBtn.textContent=mode==='signup'?'Already have an account? Login':'New user? Create account';
+}
 async function submitPathLogin(mode){
   const email=document.getElementById('auth-email')?.value?.trim()||'';
   const password=document.getElementById('auth-password')?.value?.trim()||'';
   if(!email||!password){showAuthError('Email and password are required.');return;}
+  const userMode=document.getElementById('auth-user-mode')?.value||'login';
+  const isSignup=mode==='user'&&userMode==='signup';
   try{
-    const login=await loginWithSecurity({email,password});
-    authToken=login.token||'';if(authToken)localStorage.setItem('study_token',authToken);
-    const me=await apiFetch('/auth/me');
+    let authResult=null;
+    if(isSignup){
+      const name=document.getElementById('auth-name')?.value?.trim()||'';
+      const exam=document.getElementById('auth-exam')?.value?.trim()||'';
+      if(!name||!exam){showAuthError('Name and exam are required for signup.');return;}
+      authResult=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify({email,password,name,exam})});
+      localStorage.setItem('study_demo_email',email);
+    }else{
+      authResult=await loginWithSecurity({email,password});
+    }
+    authToken=authResult.token||'';if(authToken)localStorage.setItem('study_token',authToken);
+    const me=authResult.user||await apiFetch('/auth/me');
     currentUser=me;
     syncUserProfilePrefs(me);
     if(mode==='admin'&&String(me.role||'').toLowerCase()!=='superadmin')throw new Error('Only superadmin accounts can access the superadmin panel.');
@@ -822,7 +844,16 @@ function renderPathLogin(mode){
       <input id="auth-email" class="auth-input" type="email" placeholder="you@example.com">
       <label class="auth-lbl">Password</label>
       <input id="auth-password" class="auth-input" type="password" placeholder="Enter password">
-      <button class="ob-btn" onclick="submitPathLogin('${mode}')">${mode==='admin'?'Login to Superadmin':'Login'}</button>
+      ${mode==='admin'?'':`
+      <input id="auth-user-mode" type="hidden" value="login">
+      <div id="auth-user-signup-fields" class="hidden">
+        <label class="auth-lbl">Full Name</label>
+        <input id="auth-name" class="auth-input" type="text" placeholder="Your full name">
+        <label class="auth-lbl">Target Exam</label>
+        <input id="auth-exam" class="auth-input" type="text" placeholder="e.g. SSC CGL">
+      </div>`}
+      <button class="ob-btn" id="auth-submit-btn" onclick="submitPathLogin('${mode}')">${mode==='admin'?'Login to Superadmin':'Login'}</button>
+      ${mode==='admin'?'':`<button class="btn btn-gh" id="auth-toggle-btn" style="width:100%;margin-top:8px" onclick="setUserAuthMode((document.getElementById('auth-user-mode')?.value||'login')==='signup'?'login':'signup')">New user? Create account</button>`}
       <div class="auth-note">${mode==='admin'?'Only superadmin roles can continue after authentication.':'Need admin? visit /admin.'}</div>
     </div>`;
   const passEl=document.getElementById('auth-password');
@@ -831,6 +862,7 @@ function renderPathLogin(mode){
       if(event.key==='Enter')submitPathLogin(mode);
     });
   }
+  if(mode!=='admin')setUserAuthMode('login');
 }
 async function ensureAuth(){
   if(authToken){
@@ -3312,6 +3344,7 @@ window.submitIssueReport=submitIssueReport;
 window.saveReportAction=saveReportAction;
 window.createAdminContent=createAdminContent;
 window.submitPathLogin=submitPathLogin;
+window.setUserAuthMode=setUserAuthMode;
 </script>
 </body>
 </html>
